@@ -1,0 +1,17 @@
+[workspace]
+members = [
+  "crates/ledger",
+  "crates/cryptography",
+  "crates/keycloak",
+  "crates/wallet",
+  "crates/registry",
+  "crates/common",
+  "crates/examples",
+]
+resolver = "2"
+
+[workspace.package]
+license = "MIT"
+
+[workspace.dependencies]
+dotenvy = "0.15"
