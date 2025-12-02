@@ -47,11 +47,11 @@ Add the crates you need to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-ledger = { git = "ssh://git@github.com/DLC-link/canton-rs", branch = "main" }
-keycloak = { git = "ssh://git@github.com/DLC-link/canton-rs", branch = "main" }
-registry = { git = "ssh://git@github.com/DLC-link/canton-rs", branch = "main" }
-common = { git = "ssh://git@github.com/DLC-link/canton-rs", branch = "main" }
-wallet = { git = "ssh://git@github.com/DLC-link/canton-rs", branch = "main" }
+ledger = { git = "ssh://git@github.com/DLC-link/canton-lib", branch = "main" }
+keycloak = { git = "ssh://git@github.com/DLC-link/canton-lib", branch = "main" }
+registry = { git = "ssh://git@github.com/DLC-link/canton-lib", branch = "main" }
+common = { git = "ssh://git@github.com/DLC-link/canton-lib", branch = "main" }
+wallet = { git = "ssh://git@github.com/DLC-link/canton-lib", branch = "main" }
 ```
 
 ---
