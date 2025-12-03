@@ -49,7 +49,7 @@ pub struct Meta {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct MetaValue {}
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Response {
     #[serde(rename = "factoryId")]
     pub factory_id: String,
@@ -59,7 +59,7 @@ pub struct Response {
     pub choice_context: ChoiceContext,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ChoiceContext {
     #[serde(rename = "choiceContextData")]
     pub choice_context_data: Context,
