@@ -1,12 +1,13 @@
 [workspace]
 members = [
-  "crates/ledger",
-  "crates/cryptography",
-  "crates/keycloak",
-  "crates/wallet",
-  "crates/registry",
   "crates/common",
+  "crates/cryptography",
   "crates/examples",
+  "crates/keycloak",
+  "crates/ledger",
+  "crates/proto",
+  "crates/registry",
+  "crates/wallet",
 ]
 resolver = "2"
 

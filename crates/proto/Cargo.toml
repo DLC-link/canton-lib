@@ -1,0 +1,21 @@
+[package]
+name = "canton-proto-rs"
+version = "3.4.0"
+edition = "2024"
+
+[profile.release]
+opt-level = 3
+strip = "debuginfo"
+codegen-units = 1
+lto = true
+panic = "unwind"
+
+[dependencies]
+prost = { version = "0.14.1" }
+prost-types = { version = "0.14.1" }
+tonic = { version = "0.14.2" }
+tonic-prost = { version = "0.14.2" }
+
+[build-dependencies]
+tonic-prost-build = { version = "0.14.2" }
+walkdir = { version = "2.5.0" }
