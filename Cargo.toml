@@ -12,7 +12,26 @@ members = [
 resolver = "2"
 
 [workspace.package]
+edition = "2024"
 license = "MIT"
+version = "0.1.0"
+
+[workspace.profile.release]
+opt-level = 3
+strip = "debuginfo"
+codegen-units = 1
+lto = true
+panic = "unwind"
 
 [workspace.dependencies]
-dotenvy = "0.15"
+base64 = { version = "0.22.1" }
+chrono = { version = "0.4" }
+common = { path = "crates/common" }
+dotenvy = { version = "0.15" }
+keycloak = { path = "crates/keycloak" }
+ledger = { path = "crates/ledger" }
+reqwest = { version = "0.12.24" }
+serde = { version = "1.0.228" }
+serde_json = { version = "1.0" }
+tokio = { version = "1.48" }
+tokio-macros = { version = "2.5.0" }

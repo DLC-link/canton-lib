@@ -1,19 +1,20 @@
 [package]
 name = "registry"
-version = "0.1.0"
-edition = "2024"
+edition.workspace = true
 license.workspace = true
+version.workspace = true
 
 [dependencies]
-serde = { version = "1.0.228", features = ["derive"] }
-common = { path = "../common" }
-reqwest = { version = "0.12.24", features = ["json"] }
-serde_json = "1"
+reqwest = { workspace = true, features = ["json"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
 
+common = { workspace = true }
 
 [dev-dependencies]
-chrono = "0.4.42"
-keycloak = { path = "../keycloak" }
-tokio = { version = "1.48", features = ["full"] }
+chrono = { workspace = true }
 dotenvy = { workspace = true }
-ledger = { path = "../ledger" }
+tokio = { workspace = true, features = ["full"] }
+
+keycloak = { workspace = true }
+ledger = { workspace = true }
