@@ -5,7 +5,7 @@ members = [
   "crates/examples",
   "crates/keycloak",
   "crates/ledger",
-  "crates/proto",
+  "crates/ledgrpc",
   "crates/registry",
   "crates/wallet",
 ]
