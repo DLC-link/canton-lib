@@ -2,41 +2,6 @@ use canton_api_client::models;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
-pub struct UpdateRequest {
-    #[serde(rename = "filter", skip_serializing_if = "Option::is_none")]
-    pub filter: Option<TransactionFilter>,
-    #[serde(rename = "verbose")]
-    pub verbose: bool,
-    #[serde(rename = "beginExclusive")]
-    pub begin_exclusive: i64,
-    #[serde(rename = "endInclusive")]
-    pub end_inclusive: Option<i64>,
-    // #[serde(rename = "eventFormat", skip_serializing_if = "Option::is_none")]
-    // pub update_format: Option<Box<models::EventFormat>>, TODO
-}
-
-#[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
-pub struct GetActiveContractsRequest {
-    #[serde(rename = "filter", skip_serializing_if = "Option::is_none")]
-    pub filter: Option<TransactionFilter>,
-    #[serde(rename = "verbose")]
-    pub verbose: bool,
-    #[serde(rename = "activeAtOffset")]
-    pub active_at_offset: i64,
-    // #[serde(rename = "eventFormat", skip_serializing_if = "Option::is_none")]
-    // pub event_format: Option<Box<models::EventFormat>>, // TODO
-}
-
-#[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
-pub struct TransactionFilter {
-    #[serde(rename = "filtersByParty")]
-    pub filters_by_party: std::collections::HashMap<String, Filters>,
-    #[serde(rename = "filtersForAnyParty", skip_serializing_if = "Option::is_none")]
-    pub filters_for_any_party: Option<Filters>,
-}
-
-// TODO: It is duplicated with filters.rs in crates/common/src/filters.rs, let's remove later.
-#[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Filters {
     #[serde(rename = "cumulative", skip_serializing_if = "Option::is_none")]
     pub cumulative: Option<Vec<CumulativeFilter>>,
@@ -127,31 +92,6 @@ pub struct WildcardFilter {
 pub struct WildcardFilterValue {
     #[serde(rename = "includeCreatedEventBlob")]
     pub include_created_event_blob: bool,
-}
-
-pub fn convert_get_active_contracts_request(
-    req: GetActiveContractsRequest,
-) -> models::GetActiveContractsRequest {
-    models::GetActiveContractsRequest {
-        filter: req.filter.map(convert_transaction_filter),
-        verbose: req.verbose,
-        active_at_offset: req.active_at_offset,
-        event_format: None, // TODO
-    }
-}
-
-pub fn convert_transaction_filter(tf: TransactionFilter) -> Box<models::TransactionFilter> {
-    let mut filters_by_party: std::collections::HashMap<String, models::Filters> =
-        std::collections::HashMap::new();
-    for (party, filter) in tf.filters_by_party {
-        filters_by_party.insert(party, convert_filters(filter));
-    }
-    Box::new(models::TransactionFilter {
-        filters_by_party,
-        filters_for_any_party: tf
-            .filters_for_any_party
-            .map(|f| Box::new(convert_filters(f))),
-    })
 }
 
 pub fn convert_filters(f: Filters) -> models::Filters {
