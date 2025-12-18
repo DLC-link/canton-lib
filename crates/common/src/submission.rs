@@ -45,7 +45,7 @@ pub struct Submission {
     pub disclosed_contracts: Vec<transfer::DisclosedContract>,
     pub commands: Vec<Command>,
     #[serde(rename = "transactionFormat", skip_serializing_if = "Option::is_none")]
-    pub transaction_format: Option<models::TransactionFormat>,
+    pub transaction_format: Option<TransactionFormat>,
 }
 
 #[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
