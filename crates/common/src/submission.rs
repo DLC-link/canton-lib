@@ -1,5 +1,5 @@
-use canton_api_client::models;
 use crate::{accept, filters, transfer, transfer_factory};
+use canton_api_client::models;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -44,7 +44,8 @@ pub struct Submission {
     #[serde(rename = "disclosedContracts")]
     pub disclosed_contracts: Vec<transfer::DisclosedContract>,
     pub commands: Vec<Command>,
-    // pub transaction_format: Box<models::TransactionFormat>,
+    #[serde(rename = "transactionFormat", skip_serializing_if = "Option::is_none")]
+    pub transaction_format: Option<models::TransactionFormat>,
 }
 
 #[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
@@ -80,4 +81,3 @@ impl Default for TransactionShape {
         Self::TransactionShapeAcsDelta(Default::default())
     }
 }
-
