@@ -41,6 +41,16 @@ pub struct Submission {
     pub read_as: Option<Vec<String>>,
     #[serde(rename = "commandId")]
     pub command_id: String,
+    #[serde(rename = "submissionId", skip_serializing_if = "Option::is_none")]
+    pub submission_id: Option<String>,
+    #[serde(rename = "workflowId", skip_serializing_if = "Option::is_none")]
+    pub workflow_id: Option<String>,
+    #[serde(rename = "domainId", skip_serializing_if = "Option::is_none")]
+    pub domain_id: Option<String>,
+    #[serde(rename = "userId", skip_serializing_if = "Option::is_none")]
+    pub user_id: Option<String>,
+    #[serde(rename = "deduplicationPeriod", skip_serializing_if = "Option::is_none")]
+    pub deduplication_period: Option<DeduplicationPeriod>,
     #[serde(rename = "disclosedContracts")]
     pub disclosed_contracts: Vec<transfer::DisclosedContract>,
     pub commands: Vec<Command>,
@@ -53,7 +63,7 @@ pub struct TransactionFormat {
     #[serde(rename = "eventFormat", skip_serializing_if = "Option::is_none")]
     pub event_format: Option<EventFormat>,
     #[serde(rename = "transactionShape")]
-    pub transaction_shape: Option<TransactionShape>,
+    pub transaction_shape: Option<String>,
 }
 
 #[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
@@ -69,15 +79,14 @@ pub struct EventFormat {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
-pub enum TransactionShape {
-    TransactionShapeAcsDelta(serde_json::Value),
-    TransactionShapeLedgerEffects(serde_json::Value),
-    TransactionShapeUnspecified(serde_json::Value),
-    Unrecognized(Box<models::Unrecognized>),
+pub enum DeduplicationPeriod {
+    DeduplicationPeriodOneOf(models::DeduplicationPeriodOneOf),
+    DeduplicationPeriodOneOf1(models::DeduplicationPeriodOneOf1),
+    DeduplicationPeriodOneOf2(models::DeduplicationPeriodOneOf2),
 }
 
-impl Default for TransactionShape {
+impl Default for DeduplicationPeriod {
     fn default() -> Self {
-        Self::TransactionShapeAcsDelta(Default::default())
+        Self::DeduplicationPeriodOneOf(Default::default())
     }
 }

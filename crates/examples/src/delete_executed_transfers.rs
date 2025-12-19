@@ -301,6 +301,11 @@ async fn process_chunk(
             act_as: vec![config.party.clone()],
             read_as: Some(vec![config.decentralized_party_id.clone()]),
             command_id: uuid::Uuid::new_v4().to_string(),
+            submission_id: None,
+            workflow_id: None,
+            domain_id: None,
+            user_id: None,
+            deduplication_period: None,
             disclosed_contracts,
             commands: vec![common::submission::Command::ExerciseCommand(
                 exercise_command,
