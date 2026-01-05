@@ -20,7 +20,7 @@
 /// - MAX_CONTRACTS: Maximum number of contracts to delete (default: unlimited)
 /// - NUM_THREADS: Number of parallel threads (default: 4)
 /// - CONTRACT_IDS_CSV: Path to CSV file containing contract IDs (skips chain fetch if set)
-use std::env;
+use std::{env};
 use std::fs;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -301,16 +301,11 @@ async fn process_chunk(
             act_as: vec![config.party.clone()],
             read_as: Some(vec![config.decentralized_party_id.clone()]),
             command_id: uuid::Uuid::new_v4().to_string(),
-            submission_id: None,
-            workflow_id: None,
-            domain_id: None,
-            user_id: None,
-            deduplication_period: None,
             disclosed_contracts,
             commands: vec![common::submission::Command::ExerciseCommand(
                 exercise_command,
             )],
-            transaction_format: None,
+            ..Default::default()
         };
 
         match ledger::submit::wait_for_transaction_tree(ledger::submit::Params {

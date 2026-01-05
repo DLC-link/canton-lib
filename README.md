@@ -243,6 +243,19 @@ curl -X POST $LEDGER_HOST/v2/commands/submit-and-wait-for-transaction-tree \
   }'
 ```
 
+## Breaking changes
+
+### v0.1.0 -> v0.2.0
+
+The common crate's `common::submission::Submission` has a few extra fields, you can simple add `..Deafult::default()`, to fulfill that need.
+
+```rust
+let submission_request = common::submission::Submission {
+    // ....
+    ..Default::default()
+};
+```
+
 ---
 
 ## Contributing
