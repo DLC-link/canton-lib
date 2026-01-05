@@ -290,8 +290,9 @@ checksum = "b05b61dc5112cbb17e4b6cd61790d9845d13888356391624cbe7e41efeac1e75"
 
 [[package]]
 name = "common"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
+ "canton-api-client",
  "serde",
  "serde_json",
 ]
@@ -334,7 +335,7 @@ dependencies = [
 
 [[package]]
 name = "cryptography"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "aes-gcm",
  "base64",
@@ -489,7 +490,7 @@ dependencies = [
 
 [[package]]
 name = "examples"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "common",
  "dotenvy",
@@ -1070,7 +1071,7 @@ dependencies = [
 
 [[package]]
 name = "keycloak"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "base64",
  "reqwest",
@@ -1080,7 +1081,7 @@ dependencies = [
 
 [[package]]
 name = "ledger"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "base64",
  "canton-api-client",
@@ -1597,7 +1598,7 @@ checksum = "7a2d987857b319362043e95f5353c0535c1f58eec5336fdfcf626430af7def58"
 
 [[package]]
 name = "registry"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "common",
@@ -2443,7 +2444,7 @@ dependencies = [
 
 [[package]]
 name = "wallet"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "dotenvy",
