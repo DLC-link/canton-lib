@@ -1,0 +1,15 @@
+[package]
+name = "canton-proto-rs"
+edition.workspace = true
+license.workspace = true
+version = "3.4.0"
+
+[dependencies]
+prost = { version = "0.14.1" }
+prost-types = { version = "0.14.1" }
+tonic = { version = "0.14.2" }
+tonic-prost = { version = "0.14.2" }
+
+[build-dependencies]
+tonic-prost-build = { version = "0.14.2" }
+walkdir = { version = "2.5.0" }
