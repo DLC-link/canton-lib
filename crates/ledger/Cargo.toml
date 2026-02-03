@@ -6,22 +6,31 @@ version.workspace = true
 
 [dependencies]
 base64 = { workspace = true }
-reqwest = { workspace = true, features = ["json"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
 canton-api-client = "3.3.0-0.1.0"
 futures-util = "0.3.31"
 log = "0.4.17"
-rand = "0.8"
-tokio-tungstenite = { version = "0.21", features = ["native-tls"] }
 url = "2.5.4"
 
 common = { workspace = true }
 
+# Native target dependencies
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+reqwest = { workspace = true, features = ["json"] }
+tokio-tungstenite = { version = "0.21", features = ["rustls-tls-webpki-roots"] }
+getrandom = { version = "0.2" }
+
+# WASM target dependencies
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+reqwest = { workspace = true, features = ["json"] }
+getrandom = { version = "0.2", features = ["js"] }
+
 [dev-dependencies]
-dotenvy = { workspace = true }
-tokio = { workspace = true, features = ["full"] }
+tokio = { workspace = true }
 tokio-macros = { workspace = true }
+
+dotenvy = { workspace = true }
 
 keycloak = { workspace = true }

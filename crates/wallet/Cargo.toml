@@ -5,14 +5,19 @@ license.workspace = true
 version.workspace = true
 
 [dependencies]
-chrono = { workspace = true, features = ["serde", "clock"] }
-reqwest = { workspace = true, features = ["json"] }
+chrono = { workspace = true, features = ["serde"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-tokio = { workspace = true, features = ["full"] }
-tokio-macros = { workspace = true }
+
+# Platform-specific HTTP client
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+reqwest = { workspace = true, features = ["json"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+reqwest = { workspace = true, features = ["json"] }
 
 [dev-dependencies]
 dotenvy = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 
 keycloak = { workspace = true }
