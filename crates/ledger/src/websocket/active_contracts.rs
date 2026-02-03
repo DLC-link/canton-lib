@@ -3,8 +3,7 @@ use canton_api_client::models;
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use tokio_tungstenite::tungstenite::Message;
-use tokio_tungstenite::tungstenite::handshake::client::Request;
+use tokio_tungstenite_wasm::{connect_with_protocols, Message};
 
 #[derive(Debug, Clone)]
 pub struct Params {
@@ -40,25 +39,11 @@ where
         ws_host.trim_end_matches('/')
     );
 
-    // Parse URL to extract host
-    let parsed_url = url::Url::parse(&ws_url).map_err(|e| format!("Invalid URL: {e}"))?;
-    let host = parsed_url
-        .host_str()
-        .ok_or_else(|| "Could not extract host from URL".to_string())?;
+    // Authentication via Sec-WebSocket-Protocol header
+    let protocol = format!("jwt.token.{}", params.access_token);
+    let protocols = [protocol.as_str(), "daml.ws.auth"];
 
-    let protocol_header = format!("jwt.token.{}, daml.ws.auth", params.access_token);
-    let request = Request::builder()
-        .uri(parsed_url.as_str())
-        .header("Sec-WebSocket-Protocol", protocol_header)
-        .header("Sec-WebSocket-Key", utils::random_16_byte_string())
-        .header("Sec-WebSocket-Version", "13")
-        .header("Connection", "Upgrade")
-        .header("Upgrade", "websocket")
-        .header("Host", host)
-        .body(())
-        .map_err(|e| format!("Failed to build request: {e}"))?;
-
-    let (ws_stream, _) = tokio_tungstenite::connect_async(request)
+    let ws_stream = connect_with_protocols(&ws_url, &protocols)
         .await
         .map_err(|e| format!("WebSocket connection error: {e}"))?;
 
@@ -90,7 +75,7 @@ where
 
     // Send messages if needed
     match write
-        .send(Message::Text(event.to_string()))
+        .send(Message::text(event.to_string()))
         .await
         .map_err(|e| format!("Error sending message: {e}"))
     {
@@ -102,7 +87,11 @@ where
 
     while let Some(message) = read.next().await {
         match message {
-            Ok(Message::Text(text)) => {
+            Ok(msg) if msg.is_text() => {
+                let text = msg
+                    .into_text()
+                    .map_err(|e| format!("Error reading text message: {e}"))?
+                    .to_string();
                 if text.contains("A security-sensitive error has been received") {
                     error = Some(format!(
                         "Received security-sensitive error from server: {}",
@@ -112,24 +101,19 @@ where
                 }
                 callback(text).await;
             }
-            Ok(Message::Binary(_)) => {
+            Ok(msg) if msg.is_binary() => {
                 log::info!("Received unhandled binary message.");
             }
-            Ok(Message::Close(_)) => {
+            Ok(msg) if msg.is_close() => {
                 break;
             }
             Err(e) => {
                 error = Some(format!("WebSocket error: {e}"));
                 break;
             }
-            msg => match msg {
-                Ok(other) => {
-                    log::info!("Received other type of message: {:?}", other);
-                }
-                Err(e) => {
-                    log::error!("Error receiving message: {}", e);
-                }
-            },
+            Ok(other) => {
+                log::info!("Received other type of message: {:?}", other);
+            }
         }
     }
 
@@ -158,25 +142,11 @@ pub async fn get(params: Params) -> Result<Vec<models::JsActiveContract>, String
         ws_host.trim_end_matches('/')
     );
 
-    // Parse URL to extract host
-    let parsed_url = url::Url::parse(&ws_url).map_err(|e| format!("Invalid URL: {e}"))?;
-    let host = parsed_url
-        .host_str()
-        .ok_or_else(|| "Could not extract host from URL".to_string())?;
+    // Authentication via Sec-WebSocket-Protocol header
+    let protocol = format!("jwt.token.{}", params.access_token);
+    let protocols = [protocol.as_str(), "daml.ws.auth"];
 
-    let protocol_header = format!("jwt.token.{}, daml.ws.auth", params.access_token);
-    let request = Request::builder()
-        .uri(parsed_url.as_str())
-        .header("Sec-WebSocket-Protocol", protocol_header)
-        .header("Sec-WebSocket-Key", utils::random_16_byte_string())
-        .header("Sec-WebSocket-Version", "13")
-        .header("Connection", "Upgrade")
-        .header("Upgrade", "websocket")
-        .header("Host", host)
-        .body(())
-        .map_err(|e| format!("Failed to build request: {e}"))?;
-
-    let (ws_stream, _) = tokio_tungstenite::connect_async(request)
+    let ws_stream = connect_with_protocols(&ws_url, &protocols)
         .await
         .map_err(|e| format!("WebSocket connection error: {e}"))?;
 
@@ -208,7 +178,7 @@ pub async fn get(params: Params) -> Result<Vec<models::JsActiveContract>, String
 
     // Send messages if needed
     match write
-        .send(Message::Text(event.to_string()))
+        .send(Message::text(event.to_string()))
         .await
         .map_err(|e| format!("Error sending message: {e}"))
     {
@@ -221,7 +191,11 @@ pub async fn get(params: Params) -> Result<Vec<models::JsActiveContract>, String
     let mut result: Vec<models::JsActiveContract> = Vec::new();
     while let Some(message) = read.next().await {
         match message {
-            Ok(Message::Text(text)) => {
+            Ok(msg) if msg.is_text() => {
+                let text = msg
+                    .into_text()
+                    .map_err(|e| format!("Error reading text message: {e}"))?
+                    .to_string();
                 if text.contains("A security-sensitive error has been received") {
                     error = Some(format!(
                         "Received security-sensitive error from server: {}",
@@ -236,24 +210,19 @@ pub async fn get(params: Params) -> Result<Vec<models::JsActiveContract>, String
                     result.push(ce.js_active_contract);
                 }
             }
-            Ok(Message::Binary(_)) => {
+            Ok(msg) if msg.is_binary() => {
                 log::warn!("Received unhandled binary message.");
             }
-            Ok(Message::Close(_)) => {
+            Ok(msg) if msg.is_close() => {
                 break;
             }
             Err(e) => {
                 error = Some(format!("WebSocket error: {e}"));
                 break;
             }
-            msg => match msg {
-                Ok(other) => {
-                    log::info!("Received other type of message: {:?}", other);
-                }
-                Err(e) => {
-                    log::error!("Error receiving message: {}", e);
-                }
-            },
+            Ok(other) => {
+                log::info!("Received other type of message: {:?}", other);
+            }
         }
     }
 
