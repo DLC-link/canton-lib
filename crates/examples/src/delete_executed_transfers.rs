@@ -291,7 +291,7 @@ async fn process_chunk(
 
         let disclosed_contracts = vec![common::transfer::DisclosedContract {
             contract_id: config.choice_contract_id.clone(),
-            template_id: config.disclosed_contract_template_id.clone(),
+            template_id: Some(config.disclosed_contract_template_id.clone()),
             created_event_blob: config.disclosed_contract_blob.clone(),
             synchronizer_id: "".to_string(),
         }];
