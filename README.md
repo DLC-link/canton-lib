@@ -256,6 +256,17 @@ let submission_request = common::submission::Submission {
 };
 ```
 
+### v0.2.0 -> v0.3.0
+
+The common crate's `common::transfer::DisclosedContract` has a field called `template_id` changed from `String` to `Option<String>`. You can set it to `Some(template_id)` or `None` if not applicable. It is because in the latest Canton versions, it became optional.
+
+```rust
+let disclosed_contract = common::transfer::DisclosedContract {
+    template_id: Some("package:Module:Template".to_string()),
+    // ....
+};
+```
+
 ---
 
 ## Contributing
