@@ -30,7 +30,7 @@ pub struct InstrumentId {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DisclosedContract {
-    #[serde(rename = "templateId")]
+    #[serde(rename = "templateId", skip_serializing_if = "Option::is_none")]
     pub template_id: Option<String>,
     #[serde(rename = "contractId")]
     pub contract_id: String,
