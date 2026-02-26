@@ -30,6 +30,7 @@ This library provides a Rust interface for interacting with Canton blockchain pa
 | `common` | Common types for transfers and contract operations |
 | `wallet` | Wallet operations (amulet rules, mining rounds) |
 | `cryptography` | Cryptographic utilities (AES-256-GCM) |
+| `ledgrpc` | Canton Ledger gRPC protobuf bindings (canton-proto-rs) |
 
 ### Prerequisites
 
@@ -52,6 +53,8 @@ keycloak = { git = "ssh://git@github.com/DLC-link/canton-lib", branch = "main" }
 registry = { git = "ssh://git@github.com/DLC-link/canton-lib", branch = "main" }
 common = { git = "ssh://git@github.com/DLC-link/canton-lib", branch = "main" }
 wallet = { git = "ssh://git@github.com/DLC-link/canton-lib", branch = "main" }
+cryptography = { git = "ssh://git@github.com/DLC-link/canton-lib", branch = "main" }
+canton-proto-rs = { git = "ssh://git@github.com/DLC-link/canton-lib", branch = "main" }
 ```
 
 ---
@@ -160,10 +163,10 @@ cargo run -p examples --bin delete_executed_transfers
 ### `ledger`
 
 - `ledger_end::get(Params)` - Get current ledger offset
-- `active_contracts::get(Params)` - Query active contracts (REST)
+- `active_contracts::get_by_party(Params)` - Query active contracts (REST)
 - `websocket::active_contracts::get(Params)` - Query active contracts (WebSocket)
-- `websocket::update::stream(Params)` - Stream ledger updates
-- `submit::submit(Params)` - Submit commands to the ledger
+- `websocket::update::subscribe(Params, message_handler)` - Stream ledger updates
+- `submit::wait_for_transaction_tree(Params)` - Submit commands and wait for transaction tree
 
 ### `registry`
 
@@ -247,7 +250,7 @@ curl -X POST $LEDGER_HOST/v2/commands/submit-and-wait-for-transaction-tree \
 
 ### v0.1.0 -> v0.2.0
 
-The common crate's `common::submission::Submission` has a few extra fields, you can simple add `..Deafult::default()`, to fulfill that need.
+The common crate's `common::submission::Submission` has a few extra fields, you can simple add `..Default::default()`, to fulfill that need.
 
 ```rust
 let submission_request = common::submission::Submission {
