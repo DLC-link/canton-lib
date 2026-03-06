@@ -22,23 +22,31 @@ pub struct Context {
     pub values: HashMap<String, ContextValue>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-#[serde(untagged)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(tag = "tag", content = "value")]
 pub enum ContextValue {
-    Array(ContextValueArray),
-    String(ContextValueString),
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ContextValueArray {
-    pub tag: String,
-    pub value: Vec<String>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ContextValueString {
-    pub tag: String,
-    pub value: String,
+    #[serde(rename = "AV_Text")]
+    Text(String),
+    #[serde(rename = "AV_Int")]
+    Int(i64),
+    #[serde(rename = "AV_Decimal")]
+    Decimal(f64),
+    #[serde(rename = "AV_Bool")]
+    Bool(bool),
+    #[serde(rename = "AV_Date")]
+    Date(String),
+    #[serde(rename = "AV_Time")]
+    Time(String),
+    #[serde(rename = "AV_RelTime")]
+    RelTime(String),
+    #[serde(rename = "AV_Party")]
+    Party(String),
+    #[serde(rename = "AV_ContractId")]
+    ContractId(String),
+    #[serde(rename = "AV_List")]
+    List(Vec<ContextValue>),
+    #[serde(rename = "AV_Map")]
+    Map(HashMap<String, ContextValue>),
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -79,31 +87,23 @@ mod tests {
 
         ctx_values.insert(
             "utility.digitalasset.com/instrument-configuration".to_string(),
-            ContextValue::String(ContextValueString {
-                tag: "AV_ContractId".to_string(),
-                value: contract_id.clone(),
-            }),
+            ContextValue::ContractId(contract_id.clone()),
         );
         ctx_values.insert(
             "utility.digitalasset.com/sender-credentials".to_string(),
-            ContextValue::Array(ContextValueArray {
-                tag: "AV_List".to_string(),
-                value: vec![],
-            }),
+            ContextValue::List(vec![]),
+        );
+        ctx_values.insert(
+            "utility.digitalasset.com/enable-result-contracts".to_string(),
+            ContextValue::Bool(true),
         );
         ctx_values.insert(
             "instrument-configuration".to_string(),
-            ContextValue::String(ContextValueString {
-                tag: "AV_ContractId".to_string(),
-                value: contract_id.clone(),
-            }),
+            ContextValue::ContractId(contract_id.clone()),
         );
         ctx_values.insert(
             "sender-credentials".to_string(),
-            ContextValue::Array(ContextValueArray {
-                tag: "AV_List".to_string(),
-                value: vec![],
-            }),
+            ContextValue::List(vec![]),
         );
 
         let choice_args = ChoiceArguments {
@@ -130,5 +130,40 @@ mod tests {
         };
         let serialized = serde_json::to_string(&choice_args).unwrap();
         assert!(!serialized.is_empty());
+
+        // Verify round-trip: serialized JSON should deserialize back
+        let deserialized: ChoiceArguments = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(
+            deserialized.extra_args.context.values.get("utility.digitalasset.com/enable-result-contracts"),
+            Some(&ContextValue::Bool(true))
+        );
+    }
+
+    #[test]
+    fn test_context_deserialization_all_variants() {
+        let json = r#"{"values":{
+            "bool-field":{"tag":"AV_Bool","value":true},
+            "list-field":{"tag":"AV_List","value":[]},
+            "contract-id-field":{"tag":"AV_ContractId","value":"cid1"},
+            "text-field":{"tag":"AV_Text","value":"hello"},
+            "int-field":{"tag":"AV_Int","value":42},
+            "decimal-field":{"tag":"AV_Decimal","value":3.14},
+            "date-field":{"tag":"AV_Date","value":"2024-01-01"},
+            "time-field":{"tag":"AV_Time","value":"2024-01-01T00:00:00Z"},
+            "reltime-field":{"tag":"AV_RelTime","value":"PT1H"},
+            "party-field":{"tag":"AV_Party","value":"party::1220abc"},
+            "nested-list":{"tag":"AV_List","value":[{"tag":"AV_ContractId","value":"cid2"}]},
+            "map-field":{"tag":"AV_Map","value":{"key1":{"tag":"AV_Text","value":"val1"}}}
+        }}"#;
+        let ctx: Context = serde_json::from_str(json).unwrap();
+        assert_eq!(ctx.values.len(), 12);
+        assert_eq!(ctx.values.get("bool-field"), Some(&ContextValue::Bool(true)));
+        assert_eq!(ctx.values.get("text-field"), Some(&ContextValue::Text("hello".to_string())));
+        assert_eq!(ctx.values.get("int-field"), Some(&ContextValue::Int(42)));
+        assert_eq!(ctx.values.get("party-field"), Some(&ContextValue::Party("party::1220abc".to_string())));
+        assert_eq!(
+            ctx.values.get("nested-list"),
+            Some(&ContextValue::List(vec![ContextValue::ContractId("cid2".to_string())]))
+        );
     }
 }
