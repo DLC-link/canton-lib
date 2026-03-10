@@ -1,6 +1,6 @@
 use crate::{common, utils};
 use futures_util::{SinkExt, StreamExt};
-use tokio_tungstenite::tungstenite::{handshake::client::Request, protocol::Message};
+use tokio_tungstenite_wasm::{connect_with_protocols, Message};
 
 pub struct Params {
     pub ledger_host: String,
@@ -17,25 +17,11 @@ pub async fn subscribe(
     let ws_host = utils::http_to_ws(&params.ledger_host.clone());
     let ws_url = format!("{}/v2/updates", ws_host.trim_end_matches('/'));
 
-    // Parse URL to extract host
-    let parsed_url = url::Url::parse(&ws_url).map_err(|e| format!("Invalid URL: {e}"))?;
-    let host = parsed_url
-        .host_str()
-        .ok_or_else(|| "Could not extract host from URL".to_string())?;
+    // Authentication via Sec-WebSocket-Protocol header
+    let protocol = format!("jwt.token.{}", params.access_token);
+    let protocols = [protocol.as_str(), "daml.ws.auth"];
 
-    let protocol_header = format!("jwt.token.{}, daml.ws.auth", params.access_token);
-    let request = Request::builder()
-        .uri(parsed_url.as_str())
-        .header("Sec-WebSocket-Protocol", protocol_header)
-        .header("Sec-WebSocket-Key", utils::random_16_byte_string())
-        .header("Sec-WebSocket-Version", "13")
-        .header("Connection", "Upgrade")
-        .header("Upgrade", "websocket")
-        .header("Host", host)
-        .body(())
-        .map_err(|e| format!("Failed to build request: {e}"))?;
-
-    let (ws_stream, _) = tokio_tungstenite::connect_async(request)
+    let ws_stream = connect_with_protocols(&ws_url, &protocols)
         .await
         .map_err(|e| format!("WebSocket connection error: {e}"))?;
 
@@ -64,7 +50,7 @@ pub async fn subscribe(
 
     // Send messages if needed
     match write
-        .send(Message::Text(event.to_string()))
+        .send(Message::text(event.to_string()))
         .await
         .map_err(|e| format!("Error sending message: {e}"))
     {
@@ -76,32 +62,27 @@ pub async fn subscribe(
 
     while let Some(message) = read.next().await {
         match message {
-            Ok(Message::Text(text)) => {
+            Ok(msg) if msg.is_text() => {
+                let text = msg
+                    .into_text()
+                    .map_err(|e| format!("Error reading text message: {e}"))?
+                    .to_string();
                 if let Err(e) = message_handler(text) {
                     log::error!("Error handling message: {e}");
                 }
             }
-            Ok(Message::Binary(_)) => {
+            Ok(msg) if msg.is_binary() => {
                 log::info!("Received unhandled binary message.");
             }
-            Ok(Message::Ping(data)) => {
-                // tungstenite usually auto-pongs, but it's fine to be explicit:
-                let _ = write.send(Message::Pong(data)).await;
-            }
-            Ok(Message::Close(_)) => {
+            Ok(msg) if msg.is_close() => {
                 return Ok(());
             }
             Err(e) => {
                 return Err(format!("WebSocket error: {e}"));
             }
-            msg => match msg {
-                Ok(other) => {
-                    log::info!("Received other type of message: {:?}", other);
-                }
-                Err(e) => {
-                    log::error!("Error receiving message: {}", e);
-                }
-            },
+            Ok(other) => {
+                log::info!("Received other type of message: {:?}", other);
+            }
         }
     }
     match write

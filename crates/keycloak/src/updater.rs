@@ -57,31 +57,49 @@ where
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn test_updater() {
-        use super::DeadlineUpdater;
-        use std::time::{Duration, SystemTime};
+    use super::DeadlineUpdater;
+    use std::time::{Duration, SystemTime};
 
+    #[test]
+    fn test_updater_initial_refresh() {
         let mut counter = 0;
         let mut updater = DeadlineUpdater::new(|| {
             counter += 1;
-            let next_deadline = SystemTime::now() + Duration::from_secs(2);
+            let next_deadline = SystemTime::now() + Duration::from_secs(60);
             (next_deadline, counter)
         });
 
-        // Initial get should return 1
+        // Initial get should return 1 (triggers refresh because starts expired)
         let value1 = updater.get().unwrap();
         assert_eq!(value1, 1);
 
         // Immediate second get should return cached value 1
         let value2 = updater.get().unwrap();
         assert_eq!(value2, 1);
+    }
 
-        // Wait for more than 2 seconds to exceed deadline
-        std::thread::sleep(Duration::from_secs(3));
+    #[test]
+    fn test_updater_expired_deadline() {
+        let mut counter = 0;
+        let mut updater = DeadlineUpdater::new(|| {
+            counter += 1;
+            // Set deadline in the past to force refresh on next get
+            let next_deadline = SystemTime::now()
+                .checked_sub(Duration::from_secs(1))
+                .unwrap_or(SystemTime::UNIX_EPOCH);
+            (next_deadline, counter)
+        });
 
-        // Next get should refresh and return 2
+        // First get triggers refresh
+        let value1 = updater.get().unwrap();
+        assert_eq!(value1, 1);
+
+        // Second get also triggers refresh because deadline is in the past
+        let value2 = updater.get().unwrap();
+        assert_eq!(value2, 2);
+
+        // Third get also triggers refresh
         let value3 = updater.get().unwrap();
-        assert_eq!(value3, 2);
+        assert_eq!(value3, 3);
     }
 }

@@ -1,6 +1,5 @@
 use reqwest::header;
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AmuletRulesWrapper {
@@ -29,11 +28,24 @@ pub struct Params {
     pub wallet_api_host: String,
 }
 
-pub async fn get(params: Params) -> Result<AmuletRules, String> {
-    let client = reqwest::Client::builder()
+#[cfg(not(target_arch = "wasm32"))]
+fn build_client() -> Result<reqwest::Client, String> {
+    use std::time::Duration;
+    reqwest::Client::builder()
         .timeout(Duration::from_secs(60))
         .build()
-        .map_err(|err| format!("Failed to get reqwest builder: {}", err))?;
+        .map_err(|err| format!("Failed to get reqwest builder: {}", err))
+}
+
+#[cfg(target_arch = "wasm32")]
+fn build_client() -> Result<reqwest::Client, String> {
+    reqwest::Client::builder()
+        .build()
+        .map_err(|err| format!("Failed to get reqwest builder: {}", err))
+}
+
+pub async fn get(params: Params) -> Result<AmuletRules, String> {
+    let client = build_client()?;
 
     let url = format!(
         "{}/api/validator/v0/scan-proxy/amulet-rules",

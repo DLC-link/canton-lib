@@ -1,6 +1,5 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -218,6 +217,22 @@ pub struct IssuingMiningRoundPayload {
     pub issuance_per_validator_reward_coupon: String,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+fn build_client() -> Result<reqwest::Client, String> {
+    use std::time::Duration;
+    reqwest::Client::builder()
+        .timeout(Duration::from_secs(60))
+        .build()
+        .map_err(|err| format!("Failed to get reqwest builder: {}", err))
+}
+
+#[cfg(target_arch = "wasm32")]
+fn build_client() -> Result<reqwest::Client, String> {
+    reqwest::Client::builder()
+        .build()
+        .map_err(|err| format!("Failed to get reqwest builder: {}", err))
+}
+
 /// GET /api/validator/v0/scan-proxy/open-and-issuing-mining-rounds
 ///
 /// `base_url` corresponds to `env.GetWalletAPI()` in the Go code.
@@ -230,10 +245,7 @@ pub async fn get_open_mining_rounds(
         base_url.trim_end_matches('/')
     );
 
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(60))
-        .build()
-        .map_err(|err| format!("Failed to get reqwest builder: {}", err))?;
+    let client = build_client()?;
 
     let response = client
         .get(&url)

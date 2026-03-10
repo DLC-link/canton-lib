@@ -1,8 +1,15 @@
-use aes_gcm::aead::{Aead, KeyInit, OsRng};
-use aes_gcm::{AeadCore, Aes256Gcm, Nonce};
+use aes_gcm::aead::{Aead, KeyInit};
+use aes_gcm::{Aes256Gcm, Nonce};
 use base64::{Engine as _, engine::general_purpose};
 
 pub const PREFIX: &str = "aes-256-gcm";
+
+/// Generate a random 12-byte nonce using getrandom (WASM-compatible)
+fn generate_nonce() -> Result<[u8; 12], String> {
+    let mut nonce = [0u8; 12];
+    getrandom::getrandom(&mut nonce).map_err(|e| format!("RNG error: {}", e))?;
+    Ok(nonce)
+}
 
 /// Encrypt a UTF-8 string using AES-256-GCM.
 /// Returns a base64-encoded string containing both the nonce and ciphertext.
@@ -14,14 +21,15 @@ pub fn encrypt_string(key: String, plaintext: String) -> Result<String, String> 
 
     let cipher =
         Aes256Gcm::new_from_slice(&key_bytes).map_err(|e| format!("Cipher init: {}", e))?;
-    let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+    let nonce_bytes = generate_nonce()?;
+    let nonce = Nonce::from_slice(&nonce_bytes);
 
     let ciphertext = cipher
-        .encrypt(&nonce, plaintext.as_bytes())
+        .encrypt(nonce, plaintext.as_bytes())
         .map_err(|e| format!("Encrypt error: {}", e))?;
 
     let mut combined = Vec::with_capacity(12 + ciphertext.len());
-    combined.extend_from_slice(&nonce);
+    combined.extend_from_slice(&nonce_bytes);
     combined.extend_from_slice(&ciphertext);
     Ok(general_purpose::STANDARD.encode(combined))
 }

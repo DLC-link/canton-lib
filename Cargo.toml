@@ -1,13 +1,13 @@
 [workspace]
 members = [
-  "crates/common",
-  "crates/cryptography",
-  "crates/examples",
-  "crates/keycloak",
-  "crates/ledger",
-  "crates/ledgrpc",
-  "crates/registry",
-  "crates/wallet",
+    "crates/common",
+    "crates/cryptography",
+    "crates/examples",
+    "crates/keycloak",
+    "crates/ledger",
+    "crates/ledgrpc",
+    "crates/registry",
+    "crates/wallet",
 ]
 resolver = "2"
 
@@ -16,7 +16,7 @@ edition = "2024"
 license = "MIT"
 version = "0.2.0"
 
-[workspace.profile.release]
+[profile.release]
 opt-level = 3
 strip = "debuginfo"
 codegen-units = 1
