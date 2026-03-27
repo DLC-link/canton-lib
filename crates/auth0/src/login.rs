@@ -40,9 +40,11 @@ impl Response {
             })
     }
 
-    /// Extract an arbitrary claim from the access token JWT
+    /// Extract an arbitrary claim from the access token JWT (decode-only, no signature verification).
     ///
-    /// Useful for extracting custom claims like party_id, roles, etc.
+    /// This only decodes the JWT payload; it does not verify the signature or validate
+    /// standard claims (exp, aud, iss). Do not use for authorization decisions —
+    /// rely on server-side token validation for that.
     pub fn get_claim(&self, claim_name: &str) -> Result<serde_json::Value, String> {
         let parts: Vec<&str> = self.access_token.split('.').collect();
         if parts.len() != 3 {
@@ -51,13 +53,13 @@ impl Response {
 
         let payload = parts[1];
 
-        // Try URL-safe base64 first, fall back to standard with padding
+        // Try URL-safe base64 first, fall back to URL-safe with padding
         let decoded = base64::engine::general_purpose::URL_SAFE_NO_PAD
             .decode(payload)
             .or_else(|_| {
                 let padding_needed = (4 - (payload.len() % 4)) % 4;
                 let padded = format!("{}{}", payload, "=".repeat(padding_needed));
-                base64::engine::general_purpose::STANDARD.decode(&padded)
+                base64::engine::general_purpose::URL_SAFE.decode(&padded)
             })
             .map_err(|e| format!("Failed to decode JWT payload: {e}"))?;
 
@@ -128,6 +130,15 @@ pub fn auth0_url(domain: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use base64::engine::general_purpose::{URL_SAFE, URL_SAFE_NO_PAD};
+
+    /// Build a fake JWT (header.payload.signature) encoding the payload with the given engine
+    fn fake_jwt(payload: &serde_json::Value, engine: &impl base64::Engine) -> String {
+        let header = engine.encode(b"{}");
+        let body = engine.encode(payload.to_string().as_bytes());
+        let sig = engine.encode(b"sig");
+        format!("{}.{}.{}", header, body, sig)
+    }
 
     #[test]
     fn test_auth0_url() {
@@ -139,5 +150,73 @@ mod tests {
             auth0_url("https://example.auth0.com/"),
             "https://example.auth0.com/oauth/token"
         );
+    }
+
+    #[test]
+    fn test_get_claim_url_safe_no_pad() {
+        let payload = serde_json::json!({
+            "sub": "user>>>???<<<",
+            "iss": "https://example.auth0.com/"
+        });
+        let token = fake_jwt(&payload, &URL_SAFE_NO_PAD);
+
+        // Verify the token payload contains no standard base64 chars
+        let raw_payload = token.split('.').nth(1).unwrap();
+        assert!(
+            !raw_payload.contains('+') && !raw_payload.contains('/'),
+            "URL_SAFE_NO_PAD should not produce + or / characters"
+        );
+
+        let resp = Response {
+            access_token: token,
+            expires_in: 300,
+            token_type: String::new(),
+        };
+
+        assert_eq!(resp.get_user_id().unwrap(), "user>>>???<<<");
+        assert_eq!(
+            resp.get_claim("iss").unwrap(),
+            serde_json::json!("https://example.auth0.com/")
+        );
+    }
+
+    #[test]
+    fn test_get_claim_url_safe_with_padding_fallback() {
+        // Tokens with URL-safe chars AND padding — the fallback path
+        let payload = serde_json::json!({
+            "sub": "user>>>???<<<",
+            "role": "admin"
+        });
+        let token = fake_jwt(&payload, &URL_SAFE);
+        let resp = Response {
+            access_token: token,
+            expires_in: 300,
+            token_type: String::new(),
+        };
+
+        assert_eq!(resp.get_user_id().unwrap(), "user>>>???<<<");
+        assert_eq!(resp.get_claim("role").unwrap(), serde_json::json!("admin"));
+    }
+
+    #[test]
+    fn test_get_claim_missing_claim() {
+        let payload = serde_json::json!({"sub": "user-1"});
+        let token = fake_jwt(&payload, &URL_SAFE_NO_PAD);
+        let resp = Response {
+            access_token: token,
+            expires_in: 0,
+            token_type: String::new(),
+        };
+        assert!(resp.get_claim("nonexistent").is_err());
+    }
+
+    #[test]
+    fn test_get_claim_invalid_jwt() {
+        let resp = Response {
+            access_token: "not-a-jwt".to_string(),
+            expires_in: 0,
+            token_type: String::new(),
+        };
+        assert!(resp.get_claim("sub").is_err());
     }
 }

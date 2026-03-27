@@ -34,9 +34,11 @@ impl Response {
         })
     }
 
-    /// Extract an arbitrary claim from the access token JWT
+    /// Extract an arbitrary claim from the access token JWT (decode-only, no signature verification).
     ///
-    /// Useful for extracting custom claims like party_id, roles, etc.
+    /// This only decodes the JWT payload; it does not verify the signature or validate
+    /// standard claims (exp, aud, iss). Do not use for authorization decisions —
+    /// rely on server-side token validation for that.
     pub fn get_claim(&self, claim_name: &str) -> Result<serde_json::Value, String> {
         // JWT format: header.payload.signature
         let parts: Vec<&str> = self.access_token.split('.').collect();
@@ -47,13 +49,13 @@ impl Response {
         // Decode the payload (second part)
         let payload = parts[1];
 
-        // URL-safe base64 without padding - try URL_SAFE first, fall back to STANDARD with padding
+        // URL-safe base64 without padding - try URL_SAFE_NO_PAD first, fall back to URL_SAFE with padding
         let decoded = base64::engine::general_purpose::URL_SAFE_NO_PAD
             .decode(payload)
             .or_else(|_| {
                 let padding_needed = (4 - (payload.len() % 4)) % 4;
                 let padded = format!("{}{}", payload, "=".repeat(padding_needed));
-                base64::engine::general_purpose::STANDARD.decode(&padded)
+                base64::engine::general_purpose::URL_SAFE.decode(&padded)
             })
             .map_err(|e| format!("Failed to decode JWT payload: {}", e))?;
 
@@ -201,7 +203,7 @@ pub async fn refresh(params: RefreshParams) -> Result<Response, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
+    use base64::engine::general_purpose::{URL_SAFE, URL_SAFE_NO_PAD};
 
     /// Build a fake JWT (header.payload.signature) encoding the payload with the given engine
     fn fake_jwt(payload: &serde_json::Value, engine: &impl base64::Engine) -> String {
@@ -242,20 +244,20 @@ mod tests {
     }
 
     #[test]
-    fn test_get_claim_standard_base64_fallback() {
-        // Some providers may emit standard base64 with padding — verify the fallback works
+    fn test_get_claim_url_safe_with_padding_fallback() {
+        // Tokens with URL-safe chars AND padding — the fallback path
         let payload = serde_json::json!({
-            "sub": "user-789",
+            "sub": "user>>>???<<<",
             "role": "admin"
         });
-        let token = fake_jwt(&payload, &STANDARD);
+        let token = fake_jwt(&payload, &URL_SAFE);
         let resp = Response {
             access_token: token,
             expires_in: 300,
             refresh_token: String::new(),
         };
 
-        assert_eq!(resp.get_user_id().unwrap(), "user-789");
+        assert_eq!(resp.get_user_id().unwrap(), "user>>>???<<<");
         assert_eq!(resp.get_claim("role").unwrap(), serde_json::json!("admin"));
     }
 
