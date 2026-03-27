@@ -1,5 +1,6 @@
 [workspace]
 members = [
+  "crates/auth0",
   "crates/common",
   "crates/cryptography",
   "crates/examples",
@@ -24,6 +25,7 @@ lto = true
 panic = "unwind"
 
 [workspace.dependencies]
+auth0 = { path = "crates/auth0" }
 base64 = { version = "0.22.1" }
 chrono = { version = "0.4" }
 common = { path = "crates/common" }

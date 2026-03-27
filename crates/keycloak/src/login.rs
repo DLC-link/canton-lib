@@ -27,6 +27,18 @@ impl Response {
     /// Extract the user ID (subject claim) from the access token JWT
     /// Returns the 'sub' claim which is typically the user's UUID
     pub fn get_user_id(&self) -> Result<String, String> {
+        self.get_claim("sub")
+            .and_then(|v| {
+                v.as_str()
+                    .map(|s| s.to_string())
+                    .ok_or_else(|| "'sub' claim is not a string".to_string())
+            })
+    }
+
+    /// Extract an arbitrary claim from the access token JWT
+    ///
+    /// Useful for extracting custom claims like party_id, roles, etc.
+    pub fn get_claim(&self, claim_name: &str) -> Result<serde_json::Value, String> {
         // JWT format: header.payload.signature
         let parts: Vec<&str> = self.access_token.split('.').collect();
         if parts.len() != 3 {
@@ -36,28 +48,23 @@ impl Response {
         // Decode the payload (second part)
         let payload = parts[1];
 
-        // URL-safe base64 without padding - we need to add padding for the decoder
-        let padding_needed = (4 - (payload.len() % 4)) % 4;
-        let padded = if padding_needed > 0 {
-            format!("{}{}", payload, "=".repeat(padding_needed))
-        } else {
-            payload.to_string()
-        };
-
-        // Decode base64 - use STANDARD engine with padding since we added it
-        let decoded = base64::engine::general_purpose::STANDARD
-            .decode(&padded)
+        // URL-safe base64 without padding - try URL_SAFE first, fall back to STANDARD with padding
+        let decoded = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(payload)
+            .or_else(|_| {
+                let padding_needed = (4 - (payload.len() % 4)) % 4;
+                let padded = format!("{}{}", payload, "=".repeat(padding_needed));
+                base64::engine::general_purpose::STANDARD.decode(&padded)
+            })
             .map_err(|e| format!("Failed to decode JWT payload: {}", e))?;
 
         // Parse JSON
         let json: serde_json::Value = serde_json::from_slice(&decoded)
             .map_err(|e| format!("Failed to parse JWT payload JSON: {}", e))?;
 
-        // Extract 'sub' claim
-        json.get("sub")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string())
-            .ok_or_else(|| "JWT does not contain 'sub' claim".to_string())
+        json.get(claim_name)
+            .cloned()
+            .ok_or_else(|| format!("JWT does not contain '{}' claim", claim_name))
     }
 }
 
