@@ -574,17 +574,25 @@ git commit -m "feat: add pre-submission decimal validation in registry"
 Run: `cargo check --workspace`
 Expected: compiles with no errors
 
-- [ ] **Step 2: Run unit tests only (exclude integration tests)**
+- [ ] **Step 2: Run unit tests (exclude integration tests)**
 
-Run: `cargo test --workspace -- --skip test_transfer_factory --skip test_get_amulet_rules --skip test_get_open_mining_rounds --skip test_get_accept_context`
+The `--skip` flag uses substring matching, so `--skip test_get_open_mining_rounds` would also skip the unit test `test_get_open_mining_rounds_invalid_token`. Run in two commands to handle this:
 
-The skipped tests are integration tests that require environment variables (Keycloak credentials, API hosts) and will panic if not configured. They are:
+```bash
+# All workspace tests except wallet (skip all integration tests by substring)
+cargo test --workspace --exclude wallet -- --skip test_transfer_factory --skip test_get_accept_context
+
+# Wallet tests: only run the unit test by positive match
+cargo test -p wallet test_get_open_mining_rounds_invalid_token
+```
+
+Integration tests that are excluded (they panic without env vars):
 - `registry::transfer_factory::tests::test_transfer_factory`
+- `registry::accept_context::tests::test_get_accept_context`
 - `wallet::amulet_rules::tests::test_get_amulet_rules_integration`
 - `wallet::mining_rounds::tests::test_get_open_mining_rounds`
-- `registry::accept_context::tests::test_get_accept_context`
 
-Expected: all non-integration tests PASS
+Expected: all unit tests PASS
 
 - [ ] **Step 3: Commit any remaining fixes**
 
