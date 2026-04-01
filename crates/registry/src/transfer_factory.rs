@@ -15,6 +15,10 @@ pub struct Params {
 }
 
 pub async fn get(params: Params) -> Result<common::transfer_factory::Response, String> {
+    // Validate decimal fields before submission
+    common::decimal::validate_daml_decimal(&params.request.choice_arguments.transfer.amount)
+        .map_err(|e| format!("Invalid transfer amount: {}", e))?;
+
     let client = reqwest::Client::new();
 
     let url = format!(
