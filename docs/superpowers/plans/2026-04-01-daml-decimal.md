@@ -250,12 +250,80 @@ git commit -m "feat: add Daml decimal validation module"
 
 ---
 
-### Task 3: Change `Transfer::amount` to `Decimal`
+### Task 3: Change `Transfer::amount` and `ContextValue::Decimal` types
+
+These two changes must happen together because `transfer_factory.rs` constructs `Transfer` with `amount` — changing one without the other breaks compilation.
 
 **Files:**
-- Modify: `crates/common/src/transfer.rs:1-8`
+- Modify: `crates/common/src/transfer.rs:8`
+- Modify: `crates/common/src/transfer_factory.rs:33,114,150`
 
-- [ ] **Step 1: Write a round-trip serialization test**
+- [ ] **Step 1: Change `Transfer::amount` from `String` to `Decimal`**
+
+In `crates/common/src/transfer.rs`, change line 8:
+
+```rust
+// Before
+    pub amount: String,
+
+// After
+    pub amount: rust_decimal::Decimal,
+```
+
+- [ ] **Step 2: Change `ContextValue::Decimal` from `f64` to `Decimal`**
+
+In `crates/common/src/transfer_factory.rs`, change line 33:
+
+```rust
+// Before
+    Decimal(f64),
+
+// After
+    Decimal(rust_decimal::Decimal),
+```
+
+- [ ] **Step 3: Fix the `test_choice_arguments_serialization` test**
+
+In `crates/common/src/transfer_factory.rs`, add the import at the top of the `tests` module (after `use super::*;`):
+
+```rust
+use std::str::FromStr;
+```
+
+Then change line 114:
+
+```rust
+// Before
+                amount: "100.0".to_string(),
+
+// After
+                amount: rust_decimal::Decimal::from_str("100.0").unwrap(),
+```
+
+- [ ] **Step 4: Fix the `test_context_deserialization_all_variants` test**
+
+In `crates/common/src/transfer_factory.rs`, change the decimal value in the test JSON at line 150:
+
+```rust
+// Before
+            "decimal-field":{"tag":"AV_Decimal","value":3.14},
+
+// After
+            "decimal-field":{"tag":"AV_Decimal","value":"3.14"},
+```
+
+Also add an assertion for the decimal variant after line 163 (after the `party-field` assertion):
+
+```rust
+        assert_eq!(
+            ctx.values.get("decimal-field"),
+            Some(&ContextValue::Decimal(rust_decimal::Decimal::from_str("3.14").unwrap()))
+        );
+```
+
+This requires adding `use std::str::FromStr;` to the test module imports if not already added in Step 3 (it's the same module, so the import from Step 3 covers this).
+
+- [ ] **Step 5: Add round-trip serialization test for `Transfer`**
 
 Add to the bottom of `crates/common/src/transfer.rs`:
 
@@ -294,99 +362,21 @@ mod tests {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
-
-Run: `cargo test -p common transfer::tests`
-Expected: FAIL — `amount` is still `String`, cannot assign `Decimal`
-
-- [ ] **Step 3: Change the `amount` field type**
-
-In `crates/common/src/transfer.rs`, change line 8:
-
-```rust
-// Before
-pub amount: String,
-
-// After
-pub amount: rust_decimal::Decimal,
-```
-
-- [ ] **Step 4: Run test to verify it passes**
-
-Run: `cargo test -p common transfer::tests`
-Expected: PASS
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add crates/common/src/transfer.rs
-git commit -m "feat: change Transfer::amount from String to Decimal"
-```
-
----
-
-### Task 4: Change `ContextValue::Decimal` to `rust_decimal::Decimal`
-
-**Files:**
-- Modify: `crates/common/src/transfer_factory.rs:33,114,150`
-
-- [ ] **Step 1: Update the test JSON and assertion**
-
-In `crates/common/src/transfer_factory.rs`, the test at line 142 has JSON with `"value":3.14`. Change line 150:
-
-```rust
-// Before
-            "decimal-field":{"tag":"AV_Decimal","value":3.14},
-
-// After
-            "decimal-field":{"tag":"AV_Decimal","value":"3.14"},
-```
-
-- [ ] **Step 2: Update the test `Transfer` construction**
-
-In the `test_choice_arguments_serialization` test, change line 114:
-
-```rust
-// Before
-                amount: "100.0".to_string(),
-
-// After
-                amount: rust_decimal::Decimal::from_str("100.0").unwrap(),
-```
-
-Also add the import at the top of the `tests` module (after `use super::*;`):
-
-```rust
-use std::str::FromStr;
-```
-
-- [ ] **Step 3: Change the enum variant type**
-
-In `crates/common/src/transfer_factory.rs`, change line 33:
-
-```rust
-// Before
-    Decimal(f64),
-
-// After
-    Decimal(rust_decimal::Decimal),
-```
-
-- [ ] **Step 4: Run all common tests**
+- [ ] **Step 6: Run all common tests**
 
 Run: `cargo test -p common`
-Expected: all tests PASS
+Expected: all tests PASS (decimal, transfer, and transfer_factory tests)
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add crates/common/src/transfer_factory.rs
-git commit -m "feat: change ContextValue::Decimal from f64 to rust_decimal::Decimal"
+git add crates/common/src/transfer.rs crates/common/src/transfer_factory.rs
+git commit -m "feat: change Transfer::amount and ContextValue::Decimal to rust_decimal::Decimal"
 ```
 
 ---
 
-### Task 5: Change wallet `mining_rounds.rs` Decimal fields
+### Task 4: Change wallet `mining_rounds.rs` Decimal fields
 
 **Files:**
 - Modify: `crates/wallet/Cargo.toml`
@@ -448,7 +438,7 @@ In `crates/wallet/src/mining_rounds.rs`, change line 134:
     pub extra_featured_app_reward_amount: rust_decimal::Decimal,
 ```
 
-Note: `max_num_inputs` (137), `max_num_lock_holders` (146), `max_num_outputs` (152) stay as `String` — they're `Int` in Daml but serialized as strings.
+Note: `max_num_inputs` (137), `max_num_lock_holders` (146), `max_num_outputs` (152) stay as `String` — they're `Int` in Daml but serialized as JSON strings.
 
 - [ ] **Step 5: Change `OpenMiningRoundTransferFee::initial_rate`**
 
@@ -485,7 +475,7 @@ Note: `opt_issuance_per_validator_faucet_coupon` (line 197) stays as `String` �
 - [ ] **Step 7: Run the existing wallet deserialization test**
 
 Run: `cargo test -p wallet test_get_open_mining_rounds_invalid_token`
-Expected: PASS — all Decimal fields in the test JSON are already strings (e.g., `"0.05"`, `"20000.0"`), so `serde-with-str` deserializes them correctly.
+Expected: PASS — all Decimal fields in the test JSON are already strings (e.g., `"0.05"`, `"20000.0"`), so `serde-with-str` deserializes them correctly. The `Int` and `Optional Decimal` fields remain `String` and are unchanged.
 
 - [ ] **Step 8: Commit**
 
@@ -496,11 +486,13 @@ git commit -m "feat: change wallet mining_rounds Decimal fields from String to D
 
 ---
 
-### Task 6: Add `rust_decimal` to registry and update test
+### Task 5: Add `rust_decimal` to registry and update test
+
+The `registry` crate needs `rust_decimal` as a runtime dependency because its public function `transfer_factory::get()` takes `Params` containing `common::transfer_factory::ChoiceArguments`, which contains `common::transfer::Transfer` — and `Transfer::amount` is now `rust_decimal::Decimal`. The compiler needs `rust_decimal` to resolve this type.
 
 **Files:**
 - Modify: `crates/registry/Cargo.toml`
-- Modify: `crates/registry/src/transfer_factory.rs:105`
+- Modify: `crates/registry/src/transfer_factory.rs:56,105`
 
 - [ ] **Step 1: Add `rust_decimal` dependency to registry**
 
@@ -512,7 +504,13 @@ rust_decimal = { workspace = true }
 
 - [ ] **Step 2: Update the test `Transfer` construction**
 
-In `crates/registry/src/transfer_factory.rs`, in the test at line 105, change:
+In `crates/registry/src/transfer_factory.rs`, add the import in the test module (after `use std::env;`):
+
+```rust
+use std::str::FromStr;
+```
+
+Then change line 105:
 
 ```rust
 // Before
@@ -520,12 +518,6 @@ In `crates/registry/src/transfer_factory.rs`, in the test at line 105, change:
 
 // After
                         amount: rust_decimal::Decimal::from_str("0.02").unwrap(),
-```
-
-Also add the import in the test module (after `use std::env;`):
-
-```rust
-use std::str::FromStr;
 ```
 
 - [ ] **Step 3: Verify compilation**
@@ -542,7 +534,7 @@ git commit -m "feat: add rust_decimal to registry, update transfer factory test"
 
 ---
 
-### Task 7: Add pre-submission validation in registry
+### Task 6: Add pre-submission validation in registry
 
 **Files:**
 - Modify: `crates/registry/src/transfer_factory.rs:17-47`
@@ -575,17 +567,24 @@ git commit -m "feat: add pre-submission decimal validation in registry"
 
 ---
 
-### Task 8: Full workspace build and test
+### Task 7: Full workspace build and test
 
 - [ ] **Step 1: Run full workspace check**
 
 Run: `cargo check --workspace`
 Expected: compiles with no errors
 
-- [ ] **Step 2: Run all unit tests**
+- [ ] **Step 2: Run unit tests only (exclude integration tests)**
 
-Run: `cargo test --workspace`
-Expected: all tests PASS (integration tests requiring env vars will be skipped)
+Run: `cargo test --workspace -- --skip test_transfer_factory --skip test_get_amulet_rules --skip test_get_open_mining_rounds --skip test_get_accept_context`
+
+The skipped tests are integration tests that require environment variables (Keycloak credentials, API hosts) and will panic if not configured. They are:
+- `registry::transfer_factory::tests::test_transfer_factory`
+- `wallet::amulet_rules::tests::test_get_amulet_rules_integration`
+- `wallet::mining_rounds::tests::test_get_open_mining_rounds`
+- `registry::accept_context::tests::test_get_accept_context`
+
+Expected: all non-integration tests PASS
 
 - [ ] **Step 3: Commit any remaining fixes**
 
