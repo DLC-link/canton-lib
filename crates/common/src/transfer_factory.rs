@@ -30,7 +30,7 @@ pub enum ContextValue {
     #[serde(rename = "AV_Int")]
     Int(i64),
     #[serde(rename = "AV_Decimal")]
-    Decimal(f64),
+    Decimal(rust_decimal::Decimal),
     #[serde(rename = "AV_Bool")]
     Bool(bool),
     #[serde(rename = "AV_Date")]
@@ -78,6 +78,7 @@ pub struct ChoiceContext {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::str::FromStr;
 
     #[test]
     fn test_choice_arguments_serialization() {
@@ -111,7 +112,7 @@ mod tests {
             transfer: transfer::Transfer {
                 sender: "sender1".to_string(),
                 receiver: "receiver1".to_string(),
-                amount: "100.0".to_string(),
+                amount: rust_decimal::Decimal::from_str("100.0").unwrap(),
                 instrument_id: transfer::InstrumentId {
                     admin: "admin1".to_string(),
                     id: "CBTC".to_string(),
@@ -147,7 +148,7 @@ mod tests {
             "contract-id-field":{"tag":"AV_ContractId","value":"cid1"},
             "text-field":{"tag":"AV_Text","value":"hello"},
             "int-field":{"tag":"AV_Int","value":42},
-            "decimal-field":{"tag":"AV_Decimal","value":3.14},
+            "decimal-field":{"tag":"AV_Decimal","value":"3.14"},
             "date-field":{"tag":"AV_Date","value":"2024-01-01"},
             "time-field":{"tag":"AV_Time","value":"2024-01-01T00:00:00Z"},
             "reltime-field":{"tag":"AV_RelTime","value":"PT1H"},
@@ -161,6 +162,10 @@ mod tests {
         assert_eq!(ctx.values.get("text-field"), Some(&ContextValue::Text("hello".to_string())));
         assert_eq!(ctx.values.get("int-field"), Some(&ContextValue::Int(42)));
         assert_eq!(ctx.values.get("party-field"), Some(&ContextValue::Party("party::1220abc".to_string())));
+        assert_eq!(
+            ctx.values.get("decimal-field"),
+            Some(&ContextValue::Decimal(rust_decimal::Decimal::from_str("3.14").unwrap()))
+        );
         assert_eq!(
             ctx.values.get("nested-list"),
             Some(&ContextValue::List(vec![ContextValue::ContractId("cid2".to_string())]))
