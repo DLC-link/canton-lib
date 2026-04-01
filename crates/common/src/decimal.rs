@@ -61,6 +61,26 @@ pub fn validate_context_value(
     }
 }
 
+/// Validates all Decimal fields in a Submission's commands.
+pub fn validate_submission(
+    submission: &crate::submission::Submission,
+) -> Result<(), DamlDecimalError> {
+    for command in &submission.commands {
+        let crate::submission::Command::ExerciseCommand(ec) = command;
+        match &ec.exercise_command.choice_argument {
+            crate::submission::ChoiceArgumentsVariations::TransferFactory(args) => {
+                validate_daml_decimal(&args.transfer.amount)?;
+                for value in args.extra_args.context.values.values() {
+                    validate_context_value(value)?;
+                }
+            }
+            crate::submission::ChoiceArgumentsVariations::Accept(_)
+            | crate::submission::ChoiceArgumentsVariations::Generic(_) => {}
+        }
+    }
+    Ok(())
+}
+
 /// Parses a string into a Decimal and validates it has at most 10 decimal places.
 pub fn parse_daml_decimal(s: &str) -> Result<Decimal, DamlDecimalError> {
     let value =
@@ -173,6 +193,115 @@ mod tests {
     fn validate_context_value_non_decimal_ok() {
         let val = crate::transfer_factory::ContextValue::Text("hello".to_string());
         assert!(validate_context_value(&val).is_ok());
+    }
+
+    #[test]
+    fn validate_submission_valid() {
+        let submission = crate::submission::Submission {
+            commands: vec![crate::submission::Command::ExerciseCommand(
+                crate::submission::ExerciseCommand {
+                    exercise_command: crate::submission::ExerciseCommandData {
+                        template_id: "t1".to_string(),
+                        contract_id: "c1".to_string(),
+                        choice: "choice1".to_string(),
+                        choice_argument:
+                            crate::submission::ChoiceArgumentsVariations::TransferFactory(
+                                crate::transfer_factory::ChoiceArguments {
+                                    expected_admin: "admin".to_string(),
+                                    transfer: crate::transfer::Transfer {
+                                        sender: "s".to_string(),
+                                        receiver: "r".to_string(),
+                                        amount: Decimal::from_str("1.0").unwrap(),
+                                        instrument_id: crate::transfer::InstrumentId {
+                                            admin: "a".to_string(),
+                                            id: "i".to_string(),
+                                        },
+                                        requested_at: "t".to_string(),
+                                        execute_before: "t".to_string(),
+                                        input_holding_cids: None,
+                                        meta: None,
+                                    },
+                                    extra_args: crate::transfer_factory::ExtraArgs {
+                                        context: crate::transfer_factory::Context {
+                                            values: std::collections::HashMap::new(),
+                                        },
+                                        meta: crate::transfer_factory::Meta {
+                                            values: crate::transfer_factory::MetaValue {},
+                                        },
+                                    },
+                                },
+                            ),
+                    },
+                },
+            )],
+            ..Default::default()
+        };
+        assert!(validate_submission(&submission).is_ok());
+    }
+
+    #[test]
+    fn validate_submission_invalid_amount() {
+        let submission = crate::submission::Submission {
+            commands: vec![crate::submission::Command::ExerciseCommand(
+                crate::submission::ExerciseCommand {
+                    exercise_command: crate::submission::ExerciseCommandData {
+                        template_id: "t1".to_string(),
+                        contract_id: "c1".to_string(),
+                        choice: "choice1".to_string(),
+                        choice_argument:
+                            crate::submission::ChoiceArgumentsVariations::TransferFactory(
+                                crate::transfer_factory::ChoiceArguments {
+                                    expected_admin: "admin".to_string(),
+                                    transfer: crate::transfer::Transfer {
+                                        sender: "s".to_string(),
+                                        receiver: "r".to_string(),
+                                        amount: Decimal::from_str("0.00000000001").unwrap(),
+                                        instrument_id: crate::transfer::InstrumentId {
+                                            admin: "a".to_string(),
+                                            id: "i".to_string(),
+                                        },
+                                        requested_at: "t".to_string(),
+                                        execute_before: "t".to_string(),
+                                        input_holding_cids: None,
+                                        meta: None,
+                                    },
+                                    extra_args: crate::transfer_factory::ExtraArgs {
+                                        context: crate::transfer_factory::Context {
+                                            values: std::collections::HashMap::new(),
+                                        },
+                                        meta: crate::transfer_factory::Meta {
+                                            values: crate::transfer_factory::MetaValue {},
+                                        },
+                                    },
+                                },
+                            ),
+                    },
+                },
+            )],
+            ..Default::default()
+        };
+        assert!(validate_submission(&submission).is_err());
+    }
+
+    #[test]
+    fn validate_submission_generic_skipped() {
+        let submission = crate::submission::Submission {
+            commands: vec![crate::submission::Command::ExerciseCommand(
+                crate::submission::ExerciseCommand {
+                    exercise_command: crate::submission::ExerciseCommandData {
+                        template_id: "t1".to_string(),
+                        contract_id: "c1".to_string(),
+                        choice: "choice1".to_string(),
+                        choice_argument:
+                            crate::submission::ChoiceArgumentsVariations::Generic(
+                                serde_json::json!({"amount": "0.00000000001"}),
+                            ),
+                    },
+                },
+            )],
+            ..Default::default()
+        };
+        assert!(validate_submission(&submission).is_ok());
     }
 
     #[test]
