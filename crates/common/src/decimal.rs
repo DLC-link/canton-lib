@@ -39,6 +39,28 @@ pub fn validate_daml_decimal(value: &Decimal) -> Result<(), DamlDecimalError> {
     Ok(())
 }
 
+/// Recursively validates all Decimal values in a ContextValue tree.
+pub fn validate_context_value(
+    value: &crate::transfer_factory::ContextValue,
+) -> Result<(), DamlDecimalError> {
+    match value {
+        crate::transfer_factory::ContextValue::Decimal(d) => validate_daml_decimal(d),
+        crate::transfer_factory::ContextValue::List(values) => {
+            for v in values {
+                validate_context_value(v)?;
+            }
+            Ok(())
+        }
+        crate::transfer_factory::ContextValue::Map(map) => {
+            for v in map.values() {
+                validate_context_value(v)?;
+            }
+            Ok(())
+        }
+        _ => Ok(()),
+    }
+}
+
 /// Parses a string into a Decimal and validates it has at most 10 decimal places.
 pub fn parse_daml_decimal(s: &str) -> Result<Decimal, DamlDecimalError> {
     let value =
@@ -101,6 +123,56 @@ mod tests {
             DamlDecimalError::ParseError(_) => {}
             _ => panic!("expected ParseError"),
         }
+    }
+
+    #[test]
+    fn validate_context_value_plain_decimal_ok() {
+        let val = crate::transfer_factory::ContextValue::Decimal(
+            Decimal::from_str("3.14").unwrap(),
+        );
+        assert!(validate_context_value(&val).is_ok());
+    }
+
+    #[test]
+    fn validate_context_value_nested_list_fails() {
+        let val = crate::transfer_factory::ContextValue::List(vec![
+            crate::transfer_factory::ContextValue::Decimal(
+                Decimal::from_str("1.0").unwrap(),
+            ),
+            crate::transfer_factory::ContextValue::Decimal(
+                Decimal::from_str("0.00000000001").unwrap(), // 11 decimal places
+            ),
+        ]);
+        let err = validate_context_value(&val).unwrap_err();
+        match err {
+            DamlDecimalError::InvalidScale { actual, .. } => assert_eq!(actual, 11),
+            _ => panic!("expected InvalidScale error"),
+        }
+    }
+
+    #[test]
+    fn validate_context_value_nested_map_fails() {
+        let mut map = std::collections::HashMap::new();
+        map.insert(
+            "ok".to_string(),
+            crate::transfer_factory::ContextValue::Decimal(
+                Decimal::from_str("1.0").unwrap(),
+            ),
+        );
+        map.insert(
+            "bad".to_string(),
+            crate::transfer_factory::ContextValue::Decimal(
+                Decimal::from_str("0.00000000001").unwrap(),
+            ),
+        );
+        let val = crate::transfer_factory::ContextValue::Map(map);
+        assert!(validate_context_value(&val).is_err());
+    }
+
+    #[test]
+    fn validate_context_value_non_decimal_ok() {
+        let val = crate::transfer_factory::ContextValue::Text("hello".to_string());
+        assert!(validate_context_value(&val).is_ok());
     }
 
     #[test]

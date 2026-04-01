@@ -19,6 +19,11 @@ pub async fn get(params: Params) -> Result<common::transfer_factory::Response, S
     common::decimal::validate_daml_decimal(&params.request.choice_arguments.transfer.amount)
         .map_err(|e| format!("Invalid transfer amount: {}", e))?;
 
+    for (key, value) in &params.request.choice_arguments.extra_args.context.values {
+        common::decimal::validate_context_value(value)
+            .map_err(|e| format!("Invalid decimal in context key '{}': {}", key, e))?;
+    }
+
     let client = reqwest::Client::new();
 
     let url = format!(
