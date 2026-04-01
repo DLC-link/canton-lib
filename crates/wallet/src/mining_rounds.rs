@@ -83,7 +83,7 @@ pub struct OpenMiningRoundPayload {
     pub issuing_for: Microseconds,
 
     #[serde(rename = "amuletPrice")]
-    pub amulet_price: String,
+    pub amulet_price: rust_decimal::Decimal,
 
     #[serde(rename = "issuanceConfig")]
     pub issuance_config: OpenMiningRoundIssuanceConfig,
@@ -104,22 +104,22 @@ pub struct OpenMiningRoundPayload {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpenMiningRoundIssuanceConfig {
     #[serde(rename = "validatorRewardPercentage")]
-    pub validator_reward_percentage: String,
+    pub validator_reward_percentage: rust_decimal::Decimal,
 
     #[serde(rename = "unfeaturedAppRewardCap")]
-    pub unfeatured_app_reward_cap: String,
+    pub unfeatured_app_reward_cap: rust_decimal::Decimal,
 
     #[serde(rename = "appRewardPercentage")]
-    pub app_reward_percentage: String,
+    pub app_reward_percentage: rust_decimal::Decimal,
 
     #[serde(rename = "featuredAppRewardCap")]
-    pub featured_app_reward_cap: String,
+    pub featured_app_reward_cap: rust_decimal::Decimal,
 
     #[serde(rename = "amuletToIssuePerYear")]
-    pub amulet_to_issue_per_year: String,
+    pub amulet_to_issue_per_year: rust_decimal::Decimal,
 
     #[serde(rename = "validatorRewardCap")]
-    pub validator_reward_cap: String,
+    pub validator_reward_cap: rust_decimal::Decimal,
 
     #[serde(rename = "optValidatorFaucetCap")]
     pub opt_validator_faucet_cap: String,
@@ -131,7 +131,7 @@ pub struct OpenMiningRoundTransferConfigUsd {
     pub holding_fee: Rate,
 
     #[serde(rename = "extraFeaturedAppRewardAmount")]
-    pub extra_featured_app_reward_amount: String,
+    pub extra_featured_app_reward_amount: rust_decimal::Decimal,
 
     #[serde(rename = "maxNumInputs")]
     pub max_num_inputs: String,
@@ -155,7 +155,7 @@ pub struct OpenMiningRoundTransferConfigUsd {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpenMiningRoundTransferFee {
     #[serde(rename = "initialRate")]
-    pub initial_rate: String,
+    pub initial_rate: rust_decimal::Decimal,
 
     #[serde(rename = "steps")]
     pub steps: Vec<Step>,
@@ -197,25 +197,25 @@ pub struct IssuingMiningRoundPayload {
     pub opt_issuance_per_validator_faucet_coupon: String,
 
     #[serde(rename = "issuancePerFeaturedAppRewardCoupon")]
-    pub issuance_per_featured_app_reward_coupon: String,
+    pub issuance_per_featured_app_reward_coupon: rust_decimal::Decimal,
 
     #[serde(rename = "opensAt")]
     pub opens_at: DateTime<Utc>,
 
     #[serde(rename = "issuancePerSvRewardCoupon")]
-    pub issuance_per_sv_reward_coupon: String,
+    pub issuance_per_sv_reward_coupon: rust_decimal::Decimal,
 
     #[serde(rename = "targetClosesAt")]
     pub target_closes_at: DateTime<Utc>,
 
     #[serde(rename = "issuancePerUnfeaturedAppRewardCoupon")]
-    pub issuance_per_unfeatured_app_reward_coupon: String,
+    pub issuance_per_unfeatured_app_reward_coupon: rust_decimal::Decimal,
 
     #[serde(rename = "round")]
     pub round: Number,
 
     #[serde(rename = "issuancePerValidatorRewardCoupon")]
-    pub issuance_per_validator_reward_coupon: String,
+    pub issuance_per_validator_reward_coupon: rust_decimal::Decimal,
 }
 
 /// GET /api/validator/v0/scan-proxy/open-and-issuing-mining-rounds
