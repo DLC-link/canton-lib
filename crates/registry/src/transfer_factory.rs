@@ -54,6 +54,7 @@ mod tests {
     use std::collections::HashMap;
     use std::env;
     use std::ops::Add;
+    use std::str::FromStr;
 
     #[tokio::test]
     async fn test_transfer_factory() {
@@ -102,7 +103,7 @@ mod tests {
                         sender: env::var("PARTY_ID").expect("PARTY_ID must be set"),
                         receiver: env::var("LIB_TEST_RECEIVER_PARTY_ID")
                             .expect("LIB_TEST_RECEIVER_PARTY_ID must be set"),
-                        amount: "0.02".to_string(),
+                        amount: rust_decimal::Decimal::from_str("0.02").unwrap(),
                         instrument_id: common::transfer::InstrumentId {
                             admin: common::consts::DEVNET_DECENTRALIZED_PARTY_ID.to_string(),
                             id: "CBTC".to_string(),
