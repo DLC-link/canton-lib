@@ -30,7 +30,7 @@ pub enum ContextValue {
     #[serde(rename = "AV_Int")]
     Int(i64),
     #[serde(rename = "AV_Decimal")]
-    Decimal(rust_decimal::Decimal),
+    Decimal(crate::decimal::DamlDecimal),
     #[serde(rename = "AV_Bool")]
     Bool(bool),
     #[serde(rename = "AV_Date")]
@@ -78,7 +78,7 @@ pub struct ChoiceContext {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::str::FromStr;
+    use crate::decimal::DamlDecimal;
 
     #[test]
     fn test_choice_arguments_serialization() {
@@ -112,7 +112,7 @@ mod tests {
             transfer: transfer::Transfer {
                 sender: "sender1".to_string(),
                 receiver: "receiver1".to_string(),
-                amount: rust_decimal::Decimal::from_str("100.0").unwrap(),
+                amount: DamlDecimal::parse("100.0").unwrap(),
                 instrument_id: transfer::InstrumentId {
                     admin: "admin1".to_string(),
                     id: "CBTC".to_string(),
@@ -164,7 +164,7 @@ mod tests {
         assert_eq!(ctx.values.get("party-field"), Some(&ContextValue::Party("party::1220abc".to_string())));
         assert_eq!(
             ctx.values.get("decimal-field"),
-            Some(&ContextValue::Decimal(rust_decimal::Decimal::from_str("3.14").unwrap()))
+            Some(&ContextValue::Decimal(DamlDecimal::parse("3.14").unwrap()))
         );
         assert_eq!(
             ctx.values.get("nested-list"),

@@ -5,7 +5,7 @@ use std::collections::HashMap;
 pub struct Transfer {
     pub sender: String,
     pub receiver: String,
-    pub amount: rust_decimal::Decimal,
+    pub amount: crate::decimal::DamlDecimal,
     #[serde(rename = "instrumentId")]
     pub instrument_id: InstrumentId,
     #[serde(rename = "requestedAt")]
@@ -43,15 +43,14 @@ pub struct DisclosedContract {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rust_decimal::Decimal;
-    use std::str::FromStr;
+    use crate::decimal::DamlDecimal;
 
     #[test]
     fn transfer_amount_serializes_as_string() {
         let transfer = Transfer {
             sender: "sender1".to_string(),
             receiver: "receiver1".to_string(),
-            amount: Decimal::from_str("0.02").unwrap(),
+            amount: DamlDecimal::parse("0.02").unwrap(),
             instrument_id: InstrumentId {
                 admin: "admin1".to_string(),
                 id: "CBTC".to_string(),
@@ -63,12 +62,10 @@ mod tests {
         };
 
         let json = serde_json::to_value(&transfer).unwrap();
-        // amount must be a JSON string, not a number
         assert_eq!(json["amount"], serde_json::Value::String("0.02".to_string()));
 
-        // round-trip
         let json_str = serde_json::to_string(&transfer).unwrap();
         let deserialized: Transfer = serde_json::from_str(&json_str).unwrap();
-        assert_eq!(deserialized.amount, Decimal::from_str("0.02").unwrap());
+        assert_eq!(deserialized.amount, DamlDecimal::parse("0.02").unwrap());
     }
 }
