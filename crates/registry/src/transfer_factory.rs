@@ -15,15 +15,6 @@ pub struct Params {
 }
 
 pub async fn get(params: Params) -> Result<common::transfer_factory::Response, String> {
-    // Validate decimal fields before submission
-    common::decimal::validate_daml_decimal(&params.request.choice_arguments.transfer.amount)
-        .map_err(|e| format!("Invalid transfer amount: {}", e))?;
-
-    for (key, value) in &params.request.choice_arguments.extra_args.context.values {
-        common::decimal::validate_context_value(value)
-            .map_err(|e| format!("Invalid decimal in context key '{}': {}", key, e))?;
-    }
-
     let client = reqwest::Client::new();
 
     let url = format!(
@@ -63,8 +54,6 @@ mod tests {
     use std::collections::HashMap;
     use std::env;
     use std::ops::Add;
-    use std::str::FromStr;
-
     #[tokio::test]
     async fn test_transfer_factory() {
         dotenvy::dotenv().ok();
@@ -112,7 +101,7 @@ mod tests {
                         sender: env::var("PARTY_ID").expect("PARTY_ID must be set"),
                         receiver: env::var("LIB_TEST_RECEIVER_PARTY_ID")
                             .expect("LIB_TEST_RECEIVER_PARTY_ID must be set"),
-                        amount: rust_decimal::Decimal::from_str("0.02").unwrap(),
+                        amount: common::decimal::DamlDecimal::parse("0.02").unwrap(),
                         instrument_id: common::transfer::InstrumentId {
                             admin: common::consts::DEVNET_DECENTRALIZED_PARTY_ID.to_string(),
                             id: "CBTC".to_string(),

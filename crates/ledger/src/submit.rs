@@ -5,10 +5,6 @@ pub struct Params {
 }
 
 pub async fn wait_for_transaction_tree(params: Params) -> Result<String, String> {
-    // Validate decimal fields before submission
-    common::decimal::validate_submission(&params.request)
-        .map_err(|e| format!("Invalid decimal in submission: {}", e))?;
-
     let client = reqwest::Client::new();
 
     let url = format!(
