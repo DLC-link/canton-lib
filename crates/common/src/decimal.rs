@@ -102,6 +102,12 @@ impl Neg for DamlDecimal {
     }
 }
 
+impl std::iter::Sum for DamlDecimal {
+    fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
+        iter.fold(DamlDecimal(Decimal::ZERO), |a, b| a + b)
+    }
+}
+
 impl AddAssign for DamlDecimal {
     fn add_assign(&mut self, rhs: Self) {
         *self = *self + rhs;
@@ -285,6 +291,24 @@ mod tests {
         let b = DamlDecimal::parse("2.5").unwrap();
         a += b;
         assert_eq!(a.value(), Decimal::from_str("3.5").unwrap());
+    }
+
+    #[test]
+    fn sum_iterator() {
+        let values = vec![
+            DamlDecimal::parse("1.5").unwrap(),
+            DamlDecimal::parse("2.3").unwrap(),
+            DamlDecimal::parse("3.2").unwrap(),
+        ];
+        let total: DamlDecimal = values.into_iter().sum();
+        assert_eq!(total.value(), Decimal::from_str("7.0").unwrap());
+    }
+
+    #[test]
+    fn sum_empty_iterator() {
+        let values: Vec<DamlDecimal> = vec![];
+        let total: DamlDecimal = values.into_iter().sum();
+        assert_eq!(total.value(), Decimal::ZERO);
     }
 
     #[test]
