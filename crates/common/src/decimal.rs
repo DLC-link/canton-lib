@@ -74,8 +74,14 @@ pub fn validate_submission(
                     validate_context_value(value)?;
                 }
             }
-            crate::submission::ChoiceArgumentsVariations::Accept(_)
-            | crate::submission::ChoiceArgumentsVariations::Generic(_) => {}
+            crate::submission::ChoiceArgumentsVariations::Accept(_) => {}
+            crate::submission::ChoiceArgumentsVariations::Generic(_) => {
+                log::warn!(
+                    "Skipping decimal validation for Generic choice argument in command '{}' — \
+                     caller is responsible for ensuring decimal values have at most 10 decimal places",
+                    ec.exercise_command.choice
+                );
+            }
         }
     }
     Ok(())

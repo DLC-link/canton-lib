@@ -374,6 +374,7 @@ name = "common"
 version = "0.2.0"
 dependencies = [
  "canton-api-client",
+ "log",
  "rust_decimal",
  "serde",
  "serde_json",
