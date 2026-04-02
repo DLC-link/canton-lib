@@ -66,18 +66,14 @@ impl DamlDecimal {
 impl Add for DamlDecimal {
     type Output = DamlDecimal;
     fn add(self, rhs: Self) -> Self::Output {
-        DamlDecimal(
-            (self.0 + rhs.0).round_dp_with_strategy(DAML_DECIMAL_SCALE, MidpointNearestEven),
-        )
+        DamlDecimal(self.0 + rhs.0)
     }
 }
 
 impl Sub for DamlDecimal {
     type Output = DamlDecimal;
     fn sub(self, rhs: Self) -> Self::Output {
-        DamlDecimal(
-            (self.0 - rhs.0).round_dp_with_strategy(DAML_DECIMAL_SCALE, MidpointNearestEven),
-        )
+        DamlDecimal(self.0 - rhs.0)
     }
 }
 
