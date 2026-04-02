@@ -39,6 +39,8 @@ impl std::error::Error for DamlDecimalError {}
 pub struct DamlDecimal(Decimal);
 
 impl DamlDecimal {
+    pub const ZERO: DamlDecimal = DamlDecimal(Decimal::ZERO);
+
     /// Creates a DamlDecimal from a Decimal, validating scale ≤ 10.
     pub fn new(value: Decimal) -> Result<Self, DamlDecimalError> {
         if value.scale() > DAML_DECIMAL_SCALE {
@@ -104,7 +106,7 @@ impl Neg for DamlDecimal {
 
 impl std::iter::Sum for DamlDecimal {
     fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
-        iter.fold(DamlDecimal(Decimal::ZERO), |a, b| a + b)
+        iter.fold(DamlDecimal::ZERO, |a, b| a + b)
     }
 }
 
