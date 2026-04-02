@@ -31,7 +31,7 @@ dotenvy = { version = "0.15" }
 keycloak = { path = "crates/keycloak" }
 ledger = { path = "crates/ledger" }
 reqwest = { version = "0.12.24" }
-rust_decimal = { version = "1", features = ["serde-with-str"] }
+rust_decimal = { version = "1", default-features = false, features = ["std", "serde-with-str"] }
 serde = { version = "1.0.228" }
 serde_json = { version = "1.0" }
 tokio = { version = "1.48" }
