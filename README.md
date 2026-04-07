@@ -270,6 +270,35 @@ let disclosed_contract = common::transfer::DisclosedContract {
 };
 ```
 
+### v0.3.1 -> v0.4.0
+
+Daml `Decimal` (Numeric 10) values are now represented by a `DamlDecimal` newtype wrapper instead of `String` or `f64`. This enforces ≤10 decimal places at construction time and provides arithmetic with banker's rounding (HalfEven), matching Daml's behavior.
+
+**`Transfer::amount`**: `String` → `DamlDecimal`
+
+```rust
+// Before
+amount: "0.02".to_string(),
+
+// After
+use common::decimal::DamlDecimal;
+amount: DamlDecimal::parse("0.02").unwrap(),
+```
+
+**`ContextValue::Decimal`**: `f64` → `DamlDecimal`
+
+```rust
+// Before
+ContextValue::Decimal(3.14),
+
+// After
+ContextValue::Decimal(DamlDecimal::parse("3.14").unwrap()),
+```
+
+**Wallet `mining_rounds` fields**: All Daml Decimal fields changed from `String` to `DamlDecimal`. Optional Decimal fields changed from `String` to `Option<DamlDecimal>`. These are deserialized from API responses — no code changes needed unless you access the fields directly.
+
+**`wallet` crate dependency**: The `wallet` crate now depends on `common` instead of `rust_decimal` directly. If you were using `rust_decimal::Decimal` for wallet field types, switch to `common::decimal::DamlDecimal`.
+
 ---
 
 ## Contributing
