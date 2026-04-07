@@ -246,29 +246,9 @@ curl -X POST $LEDGER_HOST/v2/commands/submit-and-wait-for-transaction-tree \
   }'
 ```
 
-## Breaking changes
+## Changelog
 
-### v0.1.0 -> v0.2.0
-
-The common crate's `common::submission::Submission` has a few extra fields, you can simple add `..Default::default()`, to fulfill that need.
-
-```rust
-let submission_request = common::submission::Submission {
-    // ....
-    ..Default::default()
-};
-```
-
-### v0.2.0 -> v0.3.0
-
-The common crate's `common::transfer::DisclosedContract` has a field called `template_id` changed from `String` to `Option<String>`. You can set it to `Some(template_id)` or `None` if not applicable. It is because in the latest Canton versions, it became optional.
-
-```rust
-let disclosed_contract = common::transfer::DisclosedContract {
-    template_id: Some("package:Module:Template".to_string()),
-    // ....
-};
-```
+See [CHANGELOG.md](CHANGELOG.md) for a detailed list of changes, including breaking changes and migration guides.
 
 ---
 
