@@ -246,58 +246,9 @@ curl -X POST $LEDGER_HOST/v2/commands/submit-and-wait-for-transaction-tree \
   }'
 ```
 
-## Breaking changes
+## Changelog
 
-### v0.1.0 -> v0.2.0
-
-The common crate's `common::submission::Submission` has a few extra fields, you can simple add `..Default::default()`, to fulfill that need.
-
-```rust
-let submission_request = common::submission::Submission {
-    // ....
-    ..Default::default()
-};
-```
-
-### v0.2.0 -> v0.3.0
-
-The common crate's `common::transfer::DisclosedContract` has a field called `template_id` changed from `String` to `Option<String>`. You can set it to `Some(template_id)` or `None` if not applicable. It is because in the latest Canton versions, it became optional.
-
-```rust
-let disclosed_contract = common::transfer::DisclosedContract {
-    template_id: Some("package:Module:Template".to_string()),
-    // ....
-};
-```
-
-### v0.3.1 -> v0.4.0
-
-Daml `Decimal` (Numeric 10) values are now represented by a `DamlDecimal` newtype wrapper instead of `String` or `f64`. This enforces ≤10 decimal places at construction time and provides arithmetic with banker's rounding (HalfEven), matching Daml's behavior.
-
-**`Transfer::amount`**: `String` → `DamlDecimal`
-
-```rust
-// Before
-amount: "0.02".to_string(),
-
-// After
-use common::decimal::DamlDecimal;
-amount: DamlDecimal::parse("0.02").unwrap(),
-```
-
-**`ContextValue::Decimal`**: `f64` → `DamlDecimal`
-
-```rust
-// Before
-ContextValue::Decimal(3.14),
-
-// After
-ContextValue::Decimal(DamlDecimal::parse("3.14").unwrap()),
-```
-
-**Wallet `mining_rounds` fields**: All Daml Decimal fields changed from `String` to `DamlDecimal`. Optional Decimal fields changed from `String` to `Option<DamlDecimal>`. These are deserialized from API responses — no code changes needed unless you access the fields directly.
-
-**`wallet` crate dependency**: The `wallet` crate now depends on `common` instead of `rust_decimal` directly. If you were using `rust_decimal::Decimal` for wallet field types, switch to `common::decimal::DamlDecimal`.
+See [CHANGELOG.md](CHANGELOG.md) for a detailed list of changes, including breaking changes and migration guides.
 
 ---
 
