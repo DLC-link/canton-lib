@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `ledger::submit::wait_for_transaction(Params)` — calls the flat `POST /v2/commands/submit-and-wait-for-transaction` JSON Ledger API endpoint and returns the raw `JsSubmitAndWaitForTransactionResponse` body (`{ "transaction": { "events": [...] } }`). When `Submission::transaction_format` is unset, builds a default `TransactionFormat { transactionShape: TRANSACTION_SHAPE_LEDGER_EFFECTS, eventFormat: { verbose: true, filtersByParty: <actAs ∪ readAs> → {} } }` to match the behavior the deprecated tree endpoint hardcoded server-side. When set, the caller's value is moved to the top-level request body so it is not double-nested inside `commands`.
-- `common::consts::TRANSACTION_SHAPE_LEDGER_EFFECTS`, `common::consts::TRANSACTION_SHAPE_ACS_DELTA` — JSON Ledger API enum constants.
+- `common::consts::TRANSACTION_SHAPE_LEDGER_EFFECTS` — JSON Ledger API enum constant used by `wait_for_transaction`'s default `TransactionFormat`.
 
 ### Deprecated
 
