@@ -308,7 +308,7 @@ async fn process_chunk(
             ..Default::default()
         };
 
-        match ledger::submit::wait_for_transaction_tree(ledger::submit::Params {
+        match ledger::submit::wait_for_transaction(ledger::submit::Params {
             ledger_host: config.ledger_host.clone(),
             access_token: config.access_token.clone(),
             request: submission_request,
