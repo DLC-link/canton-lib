@@ -3,7 +3,6 @@ use canton_api_client::apis::default_api as canton_api;
 use canton_api_client::models;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::ops::Deref;
 
 #[derive(Debug, Clone)]
 pub struct Params {
@@ -54,21 +53,24 @@ pub async fn get_by_party(params: Params) -> Result<Vec<models::JsActiveContract
 
     let mut response: Vec<models::JsActiveContract> = Vec::new();
     for active_contract in result {
-        match active_contract.contract_entry.deref() {
+        let Some(contract_entry) = active_contract.contract_entry else {
+            continue;
+        };
+        match *contract_entry {
             models::JsContractEntry::JsContractEntryOneOf(a) => {
                 response.push(*a.js_active_contract.clone());
             }
-            models::JsContractEntry::JsContractEntryOneOf2(v) => {
+            models::JsContractEntry::JsContractEntryOneOf2(ref v) => {
                 if let Some(handler) = params.unknown_contract_entry_handler {
                     handler(models::JsContractEntry::JsContractEntryOneOf2(v.clone()));
                 }
             }
-            models::JsContractEntry::JsContractEntryOneOf3(v) => {
+            models::JsContractEntry::JsContractEntryOneOf3(ref v) => {
                 if let Some(handler) = params.unknown_contract_entry_handler {
                     handler(models::JsContractEntry::JsContractEntryOneOf3(v.clone()));
                 }
             }
-            models::JsContractEntry::JsContractEntryOneOf1(v) => {
+            models::JsContractEntry::JsContractEntryOneOf1(ref v) => {
                 if let Some(handler) = params.unknown_contract_entry_handler {
                     handler(models::JsContractEntry::JsContractEntryOneOf1(v.clone()));
                 }
@@ -88,8 +90,8 @@ fn filter_active_contracts_by_create_argument(
     contracts
         .into_iter()
         .filter(|contract| {
-            // Navigate: Box<CreatedEvent> → Option<Option<Value>>
-            if let Some(Some(create_arg)) = &contract.created_event.create_argument
+            // Navigate: Box<CreatedEvent> → Option<Value>
+            if let Some(create_arg) = &contract.created_event.create_argument
                 && let Some(obj) = create_arg.as_object()
             {
                 return filters.iter().all(|(key, value)| {
