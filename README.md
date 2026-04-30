@@ -166,7 +166,7 @@ cargo run -p examples --bin delete_executed_transfers
 - `active_contracts::get_by_party(Params)` - Query active contracts (REST)
 - `websocket::active_contracts::get(Params)` - Query active contracts (WebSocket)
 - `websocket::update::subscribe(Params, message_handler)` - Stream ledger updates
-- `submit::wait_for_transaction(Params)` - Submit commands and wait for the resulting flat transaction (deprecated alias `wait_for_transaction_tree` is kept for backward compatibility and forwards to the same call)
+- `submit::wait_for_transaction(Params)` - Submit commands and wait for the resulting flat transaction (deprecated alias `wait_for_transaction_tree` is kept for source/backward compatibility only; it now forwards to the same call and returns the same flat transaction response, not the previous tree-shaped response)
 
 ### `registry`
 

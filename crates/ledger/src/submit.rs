@@ -61,7 +61,7 @@ pub async fn wait_for_transaction(params: Params) -> Result<String, String> {
 }
 
 #[deprecated(
-    since = "0.5.0",
+    since = "0.4.0",
     note = "the `submit-and-wait-for-transaction-tree` JSON Ledger API endpoint is deprecated and will be removed in Canton 3.5.0; migrate to `wait_for_transaction` (note: the response body shape changes from `transactionTree.eventsById` to `transaction.events`)"
 )]
 pub async fn wait_for_transaction_tree(params: Params) -> Result<String, String> {
