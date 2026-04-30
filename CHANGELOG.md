@@ -9,11 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `ledger::submit::wait_for_transaction(Params)` — calls the flat `POST /v2/commands/submit-and-wait-for-transaction` JSON Ledger API endpoint. When `Submission::transaction_format` is unset, builds a default `TransactionFormat { transactionShape: TRANSACTION_SHAPE_LEDGER_EFFECTS, eventFormat: { verbose: true, filtersByParty: <actAs ∪ readAs> → {} } }` to preserve the behavior the deprecated tree endpoint hardcoded server-side. When the field is set, the caller's value is used verbatim and is moved to the top-level request body so it is not double-nested inside `commands`.
+- `ledger::submit::wait_for_transaction(Params)` — calls the flat `POST /v2/commands/submit-and-wait-for-transaction` JSON Ledger API endpoint and returns the raw `JsSubmitAndWaitForTransactionResponse` body (`{ "transaction": { "events": [...] } }`). When `Submission::transaction_format` is unset, builds a default `TransactionFormat { transactionShape: TRANSACTION_SHAPE_LEDGER_EFFECTS, eventFormat: { verbose: true, filtersByParty: <actAs ∪ readAs> → {} } }` to match the behavior the deprecated tree endpoint hardcoded server-side. When set, the caller's value is moved to the top-level request body so it is not double-nested inside `commands`.
+- `common::consts::TRANSACTION_SHAPE_LEDGER_EFFECTS`, `common::consts::TRANSACTION_SHAPE_ACS_DELTA` — JSON Ledger API enum constants.
+
+### Deprecated
+
+- `ledger::submit::wait_for_transaction_tree` — still calls `POST /v2/commands/submit-and-wait-for-transaction-tree` and returns the tree-shaped response unchanged, but emits a deprecation warning. The endpoint is removed in Canton 3.5.0; migrate to `wait_for_transaction` before upgrading. Note the response shape changes from `{ "transactionTree": { "eventsById": {...} } }` (with `CreatedTreeEvent` / `ExercisedTreeEvent`) to `{ "transaction": { "events": [...] } }` (with `CreatedEvent` / `ExercisedEvent`), so downstream parsing must be updated as part of the migration.
 
 ### Changed
 
-- **Deprecated:** `ledger::submit::wait_for_transaction_tree` now forwards to `wait_for_transaction` and emits a deprecation warning. The underlying `submit-and-wait-for-transaction-tree` endpoint is removed in Canton 3.5.0; callers should migrate to `wait_for_transaction`. Note the response body is now the flat `JsSubmitAndWaitForTransactionResponse` shape (`transaction.events: Event[]`) rather than the tree shape (`transactionTree.eventsById`) — any downstream code that parsed the returned `String` must be updated.
 - README "Submit Commands" curl example updated to the flat endpoint and shows the required `transactionFormat` block.
 
 ## [0.4.0] - 2026-04-07

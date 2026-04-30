@@ -62,10 +62,40 @@ pub async fn wait_for_transaction(params: Params) -> Result<String, String> {
 
 #[deprecated(
     since = "0.5.0",
-    note = "the `submit-and-wait-for-transaction-tree` endpoint is removed in Canton 3.5.0; use `wait_for_transaction` instead"
+    note = "the `submit-and-wait-for-transaction-tree` JSON Ledger API endpoint is deprecated and will be removed in Canton 3.5.0; migrate to `wait_for_transaction` (note: the response body shape changes from `transactionTree.eventsById` to `transaction.events`)"
 )]
 pub async fn wait_for_transaction_tree(params: Params) -> Result<String, String> {
-    wait_for_transaction(params).await
+    let client = reqwest::Client::new();
+
+    let url = format!(
+        "{}/v2/commands/submit-and-wait-for-transaction-tree",
+        params.ledger_host
+    );
+    let response = client
+        .post(url)
+        .json(&params.request)
+        .bearer_auth(&params.access_token)
+        .send()
+        .await
+        .map_err(|e| format!("{}", e))?;
+
+    let status = response.status();
+    let body_raw = response.text().await.map_err(|e| {
+        format!(
+            "Failed to read response in wait_for_transaction_tree: {}",
+            e
+        )
+    })?;
+
+    if !status.is_success() {
+        return Err(format!(
+            "Submit request failed in wait_for_transaction_tree [{}]: {:?}",
+            status, body_raw
+        ));
+    }
+    log::trace!("Submit success: {}", body_raw);
+
+    Ok(body_raw)
 }
 
 fn default_transaction_format(request: &Submission) -> TransactionFormat {
