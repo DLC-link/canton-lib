@@ -7,6 +7,9 @@ pub const DEVNET_DECENTRALIZED_PARTY_ID: &str =
 
 pub const AC_FILTER_WILDCARD: &str = "";
 
+pub const TRANSACTION_SHAPE_LEDGER_EFFECTS: &str = "TRANSACTION_SHAPE_LEDGER_EFFECTS";
+pub const TRANSACTION_SHAPE_ACS_DELTA: &str = "TRANSACTION_SHAPE_ACS_DELTA";
+
 pub const TEMPLATE_AMULET: &str = "#splice-amulet:Splice.Amulet:Amulet";
 pub const TEMPLATE_VALIDATOR_RIGHT: &str = "#splice-amulet:Splice.Amulet:ValidatorRight";
 pub const TEMPLATE_APP_REWARD_COUPON: &str = "#splice-amulet:Splice.Amulet:AppRewardCoupon";

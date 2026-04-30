@@ -1,3 +1,4 @@
+use common::consts::TRANSACTION_SHAPE_LEDGER_EFFECTS;
 use common::submission::{EventFormat, Submission, TransactionFormat};
 use serde::Serialize;
 use std::collections::HashMap;
@@ -35,7 +36,7 @@ pub async fn wait_for_transaction(params: Params) -> Result<String, String> {
     };
 
     let response = client
-        .post(url.to_string())
+        .post(url)
         .json(&body)
         .bearer_auth(&params.access_token)
         .send()
@@ -83,7 +84,7 @@ fn default_transaction_format(request: &Submission) -> TransactionFormat {
     }
 
     TransactionFormat {
-        transaction_shape: Some("TRANSACTION_SHAPE_LEDGER_EFFECTS".to_string()),
+        transaction_shape: Some(TRANSACTION_SHAPE_LEDGER_EFFECTS.to_string()),
         event_format: Some(EventFormat {
             filters_by_party,
             filters_for_any_party: None,
