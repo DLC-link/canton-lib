@@ -166,7 +166,8 @@ cargo run -p examples --bin delete_executed_transfers
 - `active_contracts::get_by_party(Params)` - Query active contracts (REST)
 - `websocket::active_contracts::get(Params)` - Query active contracts (WebSocket)
 - `websocket::update::subscribe(Params, message_handler)` - Stream ledger updates
-- `submit::wait_for_transaction_tree(Params)` - Submit commands and wait for transaction tree
+- `submit::wait_for_transaction(Params)` - Submit commands and wait for the resulting flat transaction (`POST /v2/commands/submit-and-wait-for-transaction`)
+- `submit::wait_for_transaction_tree(Params)` - **Deprecated.** Still calls `POST /v2/commands/submit-and-wait-for-transaction-tree` and returns the tree-shaped response unchanged. The tree endpoint is removed in Canton 3.5.0; migrate to `wait_for_transaction` before upgrading. Note that the response shape changes from `transactionTree.eventsById` (tree) to `transaction.events` (flat) on migration, so downstream parsing must be updated.
 
 ### `registry`
 
@@ -229,22 +230,35 @@ curl -X POST $LEDGER_HOST/v2/state/active-contracts \
 ### Submit Commands
 
 ```bash
-curl -X POST $LEDGER_HOST/v2/commands/submit-and-wait-for-transaction-tree \
+curl -X POST $LEDGER_HOST/v2/commands/submit-and-wait-for-transaction \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "commands": [{
-      "ExerciseCommand": {
-        "templateId": "package:Module:Template",
-        "contractId": "'$CONTRACT_ID'",
-        "choice": "ChoiceName",
-        "choiceArgument": {}
+    "commands": {
+      "commands": [{
+        "ExerciseCommand": {
+          "templateId": "package:Module:Template",
+          "contractId": "'$CONTRACT_ID'",
+          "choice": "ChoiceName",
+          "choiceArgument": {}
+        }
+      }],
+      "commandId": "'$(uuidgen)'",
+      "actAs": ["'$PARTY_ID'"]
+    },
+    "transactionFormat": {
+      "transactionShape": "TRANSACTION_SHAPE_LEDGER_EFFECTS",
+      "eventFormat": {
+        "filtersByParty": {
+          "'$PARTY_ID'": {}
+        },
+        "verbose": true
       }
-    }],
-    "commandId": "'$(uuidgen)'",
-    "actAs": ["'$PARTY_ID'"]
+    }
   }'
 ```
+
+> The deprecated `submit-and-wait-for-transaction-tree` endpoint is removed in Canton 3.5.0; the flat `submit-and-wait-for-transaction` endpoint requires an explicit `transactionFormat`. Setting `transactionShape: TRANSACTION_SHAPE_LEDGER_EFFECTS` plus `verbose: true` preserves the behavior the tree endpoint used to hardcode server-side.
 
 ## Changelog
 
