@@ -22,6 +22,77 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - README "Submit Commands" curl example updated to the flat endpoint and shows the required `transactionFormat` block.
 
+### Migration: `wait_for_transaction_tree` → `wait_for_transaction`
+
+The tree endpoint is removed in Canton 3.5.0. Both functions take the same
+`Params { ledger_host, access_token, request: Submission }` and return
+`Result<String, String>`, so the call site itself changes only by name — but
+the **response body shape changes**, so downstream JSON parsing must be
+updated.
+
+**1. Update the call**
+
+```rust
+// Before (deprecated, removed in Canton 3.5.0):
+let body = ledger::submit::wait_for_transaction_tree(Params {
+    ledger_host,
+    access_token,
+    request: submission,
+}).await?;
+
+// After:
+let body = ledger::submit::wait_for_transaction(Params {
+    ledger_host,
+    access_token,
+    request: submission,
+}).await?;
+```
+
+`wait_for_transaction` requires `Submission.act_as` to contain at least one
+party when `Submission.transaction_format` is unset (otherwise the default
+`filtersByParty` would be empty and the server rejects it with an opaque
+error). The tree endpoint accepted an empty `act_as`; if you relied on that,
+either populate `act_as` or set `transaction_format` explicitly.
+
+**2. Update response parsing**
+
+Response shape changes from a tree-keyed object map to a flat event array:
+
+```jsonc
+// Before — wait_for_transaction_tree response:
+{
+  "transactionTree": {
+    "eventsById": {
+      "0": { "CreatedTreeEvent":  { /* ... */ } },
+      "1": { "ExercisedTreeEvent": { /* ... */ } }
+    }
+  }
+}
+
+// After — wait_for_transaction response:
+{
+  "transaction": {
+    "events": [
+      { "CreatedEvent":   { /* ... */ } },
+      { "ExercisedEvent": { /* ... */ } }
+    ]
+  }
+}
+```
+
+Concretely: replace `transactionTree.eventsById` lookups with iteration over
+`transaction.events`, and rename `CreatedTreeEvent` → `CreatedEvent` and
+`ExercisedTreeEvent` → `ExercisedEvent` in your deserialization types.
+
+**3. (Optional) customize `transactionFormat`**
+
+If `Submission::transaction_format` is left unset, `wait_for_transaction`
+builds a default equivalent to what the tree endpoint applied server-side:
+`transactionShape = TRANSACTION_SHAPE_LEDGER_EFFECTS`, `verbose = true`, and
+one empty-filter entry in `filtersByParty` per party in `actAs ∪ readAs`. To
+override (e.g. for `ACS_DELTA` shape or party-specific template filters),
+set `Submission::transaction_format` before calling.
+
 ## [0.4.0] - 2026-04-07
 
 ### Added
