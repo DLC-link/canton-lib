@@ -18,7 +18,7 @@ pub async fn get_with_client(client: &Client) -> Result<Response, String> {
         .map_err(|e| format!("Error getting ledger end: {}", e))?;
 
     Ok(Response {
-        offset: ledger_end.offset,
+        offset: ledger_end.offset.unwrap_or(0),
     })
 }
 
@@ -31,7 +31,7 @@ pub async fn get(params: Params) -> Result<Response, String> {
         .map_err(|e| format!("Error getting ledger end: {}", e))?;
 
     Ok(Response {
-        offset: ledger_end.offset,
+        offset: ledger_end.offset.unwrap_or(0),
     })
 }
 

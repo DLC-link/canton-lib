@@ -134,9 +134,10 @@ pub fn convert_get_active_contracts_request(
 ) -> models::GetActiveContractsRequest {
     models::GetActiveContractsRequest {
         filter: req.filter.map(convert_transaction_filter),
-        verbose: req.verbose,
+        verbose: Some(req.verbose),
         active_at_offset: req.active_at_offset,
         event_format: None, // TODO
+        stream_continuation_token: None,
     }
 }
 
@@ -147,7 +148,7 @@ pub fn convert_transaction_filter(tf: TransactionFilter) -> Box<models::Transact
         filters_by_party.insert(party, convert_filters(filter));
     }
     Box::new(models::TransactionFilter {
-        filters_by_party,
+        filters_by_party: Some(filters_by_party),
         filters_for_any_party: tf
             .filters_for_any_party
             .map(|f| Box::new(convert_filters(f))),
@@ -164,7 +165,7 @@ pub fn convert_filters(f: Filters) -> models::Filters {
 
 pub fn convert_cumulative_filter(cf: CumulativeFilter) -> models::CumulativeFilter {
     models::CumulativeFilter {
-        identifier_filter: Box::new(convert_identifier_filter(cf.identifier_filter)),
+        identifier_filter: Some(Box::new(convert_identifier_filter(cf.identifier_filter))),
     }
 }
 
@@ -182,12 +183,11 @@ pub fn convert_identifier_filter(idf: IdentifierFilter) -> models::IdentifierFil
                 models::IdentifierFilterOneOf1 {
                     interface_filter: Box::new(models::InterfaceFilter {
                         value: Box::new(models::InterfaceFilter1 {
-                            interface_id: i.interface_filter.value.interface_id,
-                            include_interface_view: i.interface_filter.value.include_interface_view,
-                            include_created_event_blob: i
-                                .interface_filter
-                                .value
-                                .include_created_event_blob,
+                            interface_id: i.interface_filter.value.interface_id.unwrap_or_default(),
+                            include_interface_view: Some(i.interface_filter.value.include_interface_view),
+                            include_created_event_blob: Some(
+                                i.interface_filter.value.include_created_event_blob,
+                            ),
                         }),
                     }),
                 },
@@ -198,11 +198,10 @@ pub fn convert_identifier_filter(idf: IdentifierFilter) -> models::IdentifierFil
                 models::IdentifierFilterOneOf2 {
                     template_filter: Box::new(models::TemplateFilter {
                         value: Box::new(models::TemplateFilter1 {
-                            template_id: t.template_filter.value.template_id,
-                            include_created_event_blob: t
-                                .template_filter
-                                .value
-                                .include_created_event_blob,
+                            template_id: t.template_filter.value.template_id.unwrap_or_default(),
+                            include_created_event_blob: Some(
+                                t.template_filter.value.include_created_event_blob,
+                            ),
                         }),
                     }),
                 },
@@ -213,10 +212,9 @@ pub fn convert_identifier_filter(idf: IdentifierFilter) -> models::IdentifierFil
                 models::IdentifierFilterOneOf3 {
                     wildcard_filter: Box::new(models::WildcardFilter {
                         value: Box::new(models::WildcardFilter1 {
-                            include_created_event_blob: w
-                                .wildcard_filter
-                                .value
-                                .include_created_event_blob,
+                            include_created_event_blob: Some(
+                                w.wildcard_filter.value.include_created_event_blob,
+                            ),
                         }),
                     }),
                 },

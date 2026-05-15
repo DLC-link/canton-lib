@@ -104,7 +104,7 @@ pub fn convert_filters(f: Filters) -> models::Filters {
 
 pub fn convert_cumulative_filter(cf: CumulativeFilter) -> models::CumulativeFilter {
     models::CumulativeFilter {
-        identifier_filter: Box::new(convert_identifier_filter(cf.identifier_filter)),
+        identifier_filter: Some(Box::new(convert_identifier_filter(cf.identifier_filter))),
     }
 }
 
@@ -122,12 +122,11 @@ pub fn convert_identifier_filter(idf: IdentifierFilter) -> models::IdentifierFil
                 models::IdentifierFilterOneOf1 {
                     interface_filter: Box::new(models::InterfaceFilter {
                         value: Box::new(models::InterfaceFilter1 {
-                            interface_id: i.interface_filter.value.interface_id,
-                            include_interface_view: i.interface_filter.value.include_interface_view,
-                            include_created_event_blob: i
-                                .interface_filter
-                                .value
-                                .include_created_event_blob,
+                            interface_id: i.interface_filter.value.interface_id.unwrap_or_default(),
+                            include_interface_view: Some(i.interface_filter.value.include_interface_view),
+                            include_created_event_blob: Some(
+                                i.interface_filter.value.include_created_event_blob,
+                            ),
                         }),
                     }),
                 },
@@ -138,11 +137,10 @@ pub fn convert_identifier_filter(idf: IdentifierFilter) -> models::IdentifierFil
                 models::IdentifierFilterOneOf2 {
                     template_filter: Box::new(models::TemplateFilter {
                         value: Box::new(models::TemplateFilter1 {
-                            template_id: t.template_filter.value.template_id,
-                            include_created_event_blob: t
-                                .template_filter
-                                .value
-                                .include_created_event_blob,
+                            template_id: t.template_filter.value.template_id.unwrap_or_default(),
+                            include_created_event_blob: Some(
+                                t.template_filter.value.include_created_event_blob,
+                            ),
                         }),
                     }),
                 },
@@ -153,10 +151,9 @@ pub fn convert_identifier_filter(idf: IdentifierFilter) -> models::IdentifierFil
                 models::IdentifierFilterOneOf3 {
                     wildcard_filter: Box::new(models::WildcardFilter {
                         value: Box::new(models::WildcardFilter1 {
-                            include_created_event_blob: w
-                                .wildcard_filter
-                                .value
-                                .include_created_event_blob,
+                            include_created_event_blob: Some(
+                                w.wildcard_filter.value.include_created_event_blob,
+                            ),
                         }),
                     }),
                 },

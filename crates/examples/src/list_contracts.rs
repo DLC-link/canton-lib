@@ -97,7 +97,7 @@ async fn main() -> Result<(), String> {
         println!("   Full ID: {}", contract_id);
 
         // Print create_argument if available
-        if let Some(Some(create_arg)) = &contract.created_event.create_argument {
+        if let Some(create_arg) = &contract.created_event.create_argument {
             let pretty = serde_json::to_string_pretty(create_arg).unwrap_or_default();
             println!("   Create Argument: {}", pretty);
         }
