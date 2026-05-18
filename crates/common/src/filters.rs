@@ -48,8 +48,8 @@ pub struct InterfaceFilter {
 
 #[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub struct InterfaceFilterValue {
-    #[serde(rename = "interfaceId", skip_serializing_if = "Option::is_none")]
-    pub interface_id: Option<String>,
+    #[serde(rename = "interfaceId")]
+    pub interface_id: String,
     #[serde(rename = "includeInterfaceView")]
     pub include_interface_view: bool,
     #[serde(rename = "includeCreatedEventBlob")]
@@ -70,8 +70,8 @@ pub struct TemplateFilter {
 
 #[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TemplateFilterValue {
-    #[serde(rename = "templateId", skip_serializing_if = "Option::is_none")]
-    pub template_id: Option<String>,
+    #[serde(rename = "templateId")]
+    pub template_id: String,
     #[serde(rename = "includeCreatedEventBlob")]
     pub include_created_event_blob: bool,
 }
@@ -122,7 +122,7 @@ pub fn convert_identifier_filter(idf: IdentifierFilter) -> models::IdentifierFil
                 models::IdentifierFilterOneOf1 {
                     interface_filter: Box::new(models::InterfaceFilter {
                         value: Box::new(models::InterfaceFilter1 {
-                            interface_id: i.interface_filter.value.interface_id.unwrap_or_default(),
+                            interface_id: i.interface_filter.value.interface_id,
                             include_interface_view: Some(i.interface_filter.value.include_interface_view),
                             include_created_event_blob: Some(
                                 i.interface_filter.value.include_created_event_blob,
@@ -137,7 +137,7 @@ pub fn convert_identifier_filter(idf: IdentifierFilter) -> models::IdentifierFil
                 models::IdentifierFilterOneOf2 {
                     template_filter: Box::new(models::TemplateFilter {
                         value: Box::new(models::TemplateFilter1 {
-                            template_id: t.template_filter.value.template_id.unwrap_or_default(),
+                            template_id: t.template_filter.value.template_id,
                             include_created_event_blob: Some(
                                 t.template_filter.value.include_created_event_blob,
                             ),
@@ -158,6 +158,110 @@ pub fn convert_identifier_filter(idf: IdentifierFilter) -> models::IdentifierFil
                     }),
                 },
             ))
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn convert_filters_empty_maps_cumulative_to_none() {
+        let out = convert_filters(Filters { cumulative: None });
+        assert!(out.cumulative.is_none());
+    }
+
+    #[test]
+    fn convert_filters_preserves_cumulative_count() {
+        let out = convert_filters(Filters {
+            cumulative: Some(vec![
+                CumulativeFilter::default(),
+                CumulativeFilter::default(),
+            ]),
+        });
+        assert_eq!(out.cumulative.as_ref().map(Vec::len), Some(2));
+    }
+
+    #[test]
+    fn convert_cumulative_filter_wraps_identifier_in_some() {
+        let out = convert_cumulative_filter(CumulativeFilter::default());
+        assert!(out.identifier_filter.is_some());
+    }
+
+    #[test]
+    fn convert_identifier_filter_empty_maps_to_oneof1_with_default() {
+        let out = convert_identifier_filter(IdentifierFilter::EmptyIdentifierFilter(
+            EmptyIdentifierFilter::default(),
+        ));
+        match out {
+            models::IdentifierFilter::IdentifierFilterOneOf1(b) => {
+                assert_eq!(b.interface_filter.value.interface_id, "");
+            }
+            _ => panic!("Empty variant should map to IdentifierFilterOneOf1"),
+        }
+    }
+
+    #[test]
+    fn convert_identifier_filter_interface_passes_id_and_wraps_bools() {
+        let out = convert_identifier_filter(IdentifierFilter::InterfaceIdentifierFilter(
+            InterfaceIdentifierFilter {
+                interface_filter: InterfaceFilter {
+                    value: InterfaceFilterValue {
+                        interface_id: "pkg:Mod:Iface".to_string(),
+                        include_interface_view: true,
+                        include_created_event_blob: false,
+                    },
+                },
+            },
+        ));
+        match out {
+            models::IdentifierFilter::IdentifierFilterOneOf1(b) => {
+                assert_eq!(b.interface_filter.value.interface_id, "pkg:Mod:Iface");
+                assert_eq!(b.interface_filter.value.include_interface_view, Some(true));
+                assert_eq!(b.interface_filter.value.include_created_event_blob, Some(false));
+            }
+            _ => panic!("Interface variant should map to IdentifierFilterOneOf1"),
+        }
+    }
+
+    #[test]
+    fn convert_identifier_filter_template_passes_id_and_wraps_bool() {
+        let out = convert_identifier_filter(IdentifierFilter::TemplateIdentifierFilter(
+            TemplateIdentifierFilter {
+                template_filter: TemplateFilter {
+                    value: TemplateFilterValue {
+                        template_id: "pkg:Mod:Tmpl".to_string(),
+                        include_created_event_blob: true,
+                    },
+                },
+            },
+        ));
+        match out {
+            models::IdentifierFilter::IdentifierFilterOneOf2(b) => {
+                assert_eq!(b.template_filter.value.template_id, "pkg:Mod:Tmpl");
+                assert_eq!(b.template_filter.value.include_created_event_blob, Some(true));
+            }
+            _ => panic!("Template variant should map to IdentifierFilterOneOf2"),
+        }
+    }
+
+    #[test]
+    fn convert_identifier_filter_wildcard_wraps_bool() {
+        let out = convert_identifier_filter(IdentifierFilter::WildcardIdentifierFilter(
+            WildcardIdentifierFilter {
+                wildcard_filter: WildcardFilter {
+                    value: WildcardFilterValue {
+                        include_created_event_blob: true,
+                    },
+                },
+            },
+        ));
+        match out {
+            models::IdentifierFilter::IdentifierFilterOneOf3(b) => {
+                assert_eq!(b.wildcard_filter.value.include_created_event_blob, Some(true));
+            }
+            _ => panic!("Wildcard variant should map to IdentifierFilterOneOf3"),
         }
     }
 }

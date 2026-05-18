@@ -142,9 +142,7 @@ async fn main() -> Result<(), String> {
                     ledger::common::TemplateIdentifierFilter {
                         template_filter: ledger::common::TemplateFilter {
                             value: ledger::common::TemplateFilterValue {
-                                template_id: Some(
-                                    common::consts::TEMPLATE_EXECUTED_TRANSFER.to_string(),
-                                ),
+                                template_id: common::consts::TEMPLATE_EXECUTED_TRANSFER.to_string(),
                                 include_created_event_blob: true,
                             },
                         },

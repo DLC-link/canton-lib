@@ -157,7 +157,7 @@ mod tests {
                 ledger::common::InterfaceIdentifierFilter {
                     interface_filter: ledger::common::InterfaceFilter {
                         value: ledger::common::InterfaceFilterValue {
-                            interface_id: Some(common::consts::INTERFACE_HOLDING.to_string()),
+                            interface_id: common::consts::INTERFACE_HOLDING.to_string(),
                             include_interface_view: true,
                             include_created_event_blob: true,
                         },
