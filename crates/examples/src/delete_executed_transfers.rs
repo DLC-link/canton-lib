@@ -180,7 +180,7 @@ async fn main() -> Result<(), String> {
     println!();
 
     // Step 3: Split contracts into chunks for parallel processing
-    let chunk_size = (total + num_threads - 1) / num_threads;
+    let chunk_size = total.div_ceil(num_threads);
     let chunks: Vec<Vec<String>> = transfer_contract_ids
         .chunks(chunk_size)
         .map(|c| c.to_vec())
@@ -259,7 +259,7 @@ async fn process_chunk(
 ) -> ThreadResult {
     let mut result = ThreadResult::default();
     let total_in_chunk = contract_ids.len();
-    let num_batches = (total_in_chunk + BATCH_SIZE - 1) / BATCH_SIZE;
+    let num_batches = total_in_chunk.div_ceil(BATCH_SIZE);
 
     println!(
         "[Thread {}/{}] Starting: {} contracts in {} batch(es)",

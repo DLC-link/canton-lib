@@ -16,7 +16,10 @@ pub struct ExerciseCommandData {
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(untagged)]
 pub enum ChoiceArgumentsVariations {
-    TransferFactory(transfer_factory::ChoiceArguments),
+    // Boxed because transfer_factory::ChoiceArguments is ~10x larger than the
+    // other variants; without the box, every ChoiceArgumentsVariations value
+    // pays the larger size regardless of variant.
+    TransferFactory(Box<transfer_factory::ChoiceArguments>),
     Accept(accept::ChoiceArguments),
     Generic(serde_json::Value),
 }
