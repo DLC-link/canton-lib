@@ -145,6 +145,12 @@ pub async fn password_with_client(
     Ok(response)
 }
 
+/// Build the OIDC token URL for the `client_credentials` grant on a
+/// Keycloak server that exposes the legacy `/auth` context root (Keycloak
+/// ≤ 16, or 17+ started with `--http-relative-path=/auth`).
+///
+/// For Keycloak 17+ defaults (Quarkus distribution, no `/auth` prefix),
+/// use [`token_url`] instead.
 pub fn client_credentials_url(host: &str, realm: &str) -> String {
     format!(
         "{}/auth/realms/{}/protocol/openid-connect/token",
@@ -152,6 +158,10 @@ pub fn client_credentials_url(host: &str, realm: &str) -> String {
     )
 }
 
+/// Build the OIDC token URL for the `password` grant on a Keycloak server
+/// that exposes the legacy `/auth` context root.
+///
+/// For Keycloak 17+ defaults, use [`token_url`] instead.
 pub fn password_url(host: &str, realm: &str) -> String {
     format!(
         "{}/auth/realms/{}/protocol/openid-connect/token",
@@ -159,8 +169,32 @@ pub fn password_url(host: &str, realm: &str) -> String {
     )
 }
 
+/// Build the OIDC token URL for the `master` realm on a Keycloak server
+/// that exposes the legacy `/auth` context root.
+///
+/// For Keycloak 17+ defaults, use [`master_token_url`] instead.
 pub fn password_master_url(host: &str) -> String {
     format!("{}/auth/realms/master/protocol/openid-connect/token", host)
+}
+
+/// Build the OIDC token URL for a Keycloak realm using the Keycloak 17+
+/// (Quarkus) path layout — no `/auth` context root.
+///
+/// Produces `{host}/realms/{realm}/protocol/openid-connect/token`, which is
+/// the default for Keycloak 17 and later. If a deployment still serves the
+/// legacy `/auth/realms/...` paths (Keycloak ≤ 16, or 17+ started with
+/// `--http-relative-path=/auth`), include `/auth` in the `host` argument,
+/// e.g. `https://kc.example.com/auth`.
+pub fn token_url(host: &str, realm: &str) -> String {
+    format!("{host}/realms/{realm}/protocol/openid-connect/token")
+}
+
+/// Build the OIDC token URL for the `master` realm using the Keycloak 17+
+/// (Quarkus) path layout — no `/auth` context root.
+///
+/// See [`token_url`] for notes on legacy `/auth` deployments.
+pub fn master_token_url(host: &str) -> String {
+    format!("{host}/realms/master/protocol/openid-connect/token")
 }
 
 pub async fn refresh(params: RefreshParams) -> Result<Response, String> {
