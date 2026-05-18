@@ -9,28 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Bumped `canton-api-client` from `3.3.0-0.1.0` to `3.6.0-0.1.0` (regenerated from the Canton 3.6.0 OpenAPI spec). Most spec-level changes are absorbed inside the conversion functions in `common::filters` and `ledger::common`; the only behavior changes visible to callers are listed below.
-- **BREAKING.** `common::filters::InterfaceFilterValue::interface_id` and `common::filters::TemplateFilterValue::template_id` (and their duplicates in `ledger::common`) are now `String` instead of `Option<String>`. Canton has always required these fields; the previous `Option` representation silently coerced `None` to an empty string, which Canton would reject at request time. Callers that wrapped values in `Some(...)` should drop the wrapper; callers that passed `None` must supply a real interface/template id.
+- Bumped `canton-api-client` from `3.3.0-0.1.0` to `3.6.0-0.1.0` (regenerated from the Canton 3.6.0 OpenAPI spec). Most spec-level changes are absorbed inside the conversion functions in `common::filters` and `ledger::common` with no caller-visible API changes; the only behavior change is the `ledger_end::get` note below.
 - `ledger::ledger_end::get` and `ledger::ledger_end::get_with_client` now return `Err("Ledger end response missing offset")` when the upstream `offset` field is absent. In Canton 3.6 the field became optional on the wire; treating it as a hard error preserves the previous `Response.offset: i64` API surface and surfaces what is almost certainly a server-side bug rather than silently defaulting.
-
-### Migration: `interface_id` / `template_id` are now `String`
-
-```rust
-// Before:
-ledger::common::TemplateFilterValue {
-    template_id: Some(template_id.clone()),
-    include_created_event_blob: true,
-}
-
-// After:
-ledger::common::TemplateFilterValue {
-    template_id: template_id.clone(),
-    include_created_event_blob: true,
-}
-```
-
-The same change applies to `InterfaceFilterValue::interface_id` and to the
-duplicate types under `common::filters`.
 
 ## [0.5.0] - 2026-05-11
 

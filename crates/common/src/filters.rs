@@ -48,8 +48,14 @@ pub struct InterfaceFilter {
 
 #[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub struct InterfaceFilterValue {
-    #[serde(rename = "interfaceId")]
-    pub interface_id: String,
+    // TODO: tighten to `String` in a follow-up PR after the canton-lib 3.6.0 bump
+    // cascades through cbtc-lib / dlc-attestor-stack / dec-party-manager. Canton
+    // requires this field non-empty; today `None` is coerced to "" via
+    // `.unwrap_or_default()` in `convert_identifier_filter`, which the server
+    // will reject. Keeping `Option<String>` here for now to avoid breaking
+    // downstream callers mid-cascade.
+    #[serde(rename = "interfaceId", skip_serializing_if = "Option::is_none")]
+    pub interface_id: Option<String>,
     #[serde(rename = "includeInterfaceView")]
     pub include_interface_view: bool,
     #[serde(rename = "includeCreatedEventBlob")]
@@ -70,8 +76,11 @@ pub struct TemplateFilter {
 
 #[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TemplateFilterValue {
-    #[serde(rename = "templateId")]
-    pub template_id: String,
+    // TODO: tighten to `String` in a follow-up PR (see InterfaceFilterValue
+    // above). `.unwrap_or_default()` in the converter sends "" if `None`, which
+    // Canton rejects.
+    #[serde(rename = "templateId", skip_serializing_if = "Option::is_none")]
+    pub template_id: Option<String>,
     #[serde(rename = "includeCreatedEventBlob")]
     pub include_created_event_blob: bool,
 }
@@ -122,7 +131,7 @@ pub fn convert_identifier_filter(idf: IdentifierFilter) -> models::IdentifierFil
                 models::IdentifierFilterOneOf1 {
                     interface_filter: Box::new(models::InterfaceFilter {
                         value: Box::new(models::InterfaceFilter1 {
-                            interface_id: i.interface_filter.value.interface_id,
+                            interface_id: i.interface_filter.value.interface_id.unwrap_or_default(),
                             include_interface_view: Some(i.interface_filter.value.include_interface_view),
                             include_created_event_blob: Some(
                                 i.interface_filter.value.include_created_event_blob,
@@ -137,7 +146,7 @@ pub fn convert_identifier_filter(idf: IdentifierFilter) -> models::IdentifierFil
                 models::IdentifierFilterOneOf2 {
                     template_filter: Box::new(models::TemplateFilter {
                         value: Box::new(models::TemplateFilter1 {
-                            template_id: t.template_filter.value.template_id,
+                            template_id: t.template_filter.value.template_id.unwrap_or_default(),
                             include_created_event_blob: Some(
                                 t.template_filter.value.include_created_event_blob,
                             ),
@@ -203,12 +212,12 @@ mod tests {
     }
 
     #[test]
-    fn convert_identifier_filter_interface_passes_id_and_wraps_bools() {
+    fn convert_identifier_filter_interface_unwraps_id_and_wraps_bools() {
         let out = convert_identifier_filter(IdentifierFilter::InterfaceIdentifierFilter(
             InterfaceIdentifierFilter {
                 interface_filter: InterfaceFilter {
                     value: InterfaceFilterValue {
-                        interface_id: "pkg:Mod:Iface".to_string(),
+                        interface_id: Some("pkg:Mod:Iface".to_string()),
                         include_interface_view: true,
                         include_created_event_blob: false,
                     },
@@ -226,12 +235,28 @@ mod tests {
     }
 
     #[test]
-    fn convert_identifier_filter_template_passes_id_and_wraps_bool() {
+    fn convert_identifier_filter_interface_none_id_becomes_empty_string() {
+        // Regression guard for the documented footgun: None coerces to "" on the
+        // wire, which Canton will reject. Will go away when the field is
+        // tightened to `String` in the follow-up PR.
+        let out = convert_identifier_filter(IdentifierFilter::InterfaceIdentifierFilter(
+            InterfaceIdentifierFilter::default(),
+        ));
+        match out {
+            models::IdentifierFilter::IdentifierFilterOneOf1(b) => {
+                assert_eq!(b.interface_filter.value.interface_id, "");
+            }
+            _ => panic!("Interface variant should map to IdentifierFilterOneOf1"),
+        }
+    }
+
+    #[test]
+    fn convert_identifier_filter_template_unwraps_id_and_wraps_bool() {
         let out = convert_identifier_filter(IdentifierFilter::TemplateIdentifierFilter(
             TemplateIdentifierFilter {
                 template_filter: TemplateFilter {
                     value: TemplateFilterValue {
-                        template_id: "pkg:Mod:Tmpl".to_string(),
+                        template_id: Some("pkg:Mod:Tmpl".to_string()),
                         include_created_event_blob: true,
                     },
                 },
