@@ -145,6 +145,18 @@ pub async fn password_with_client(
     Ok(response)
 }
 
+/// Build the OIDC token endpoint URL for a realm on a Keycloak server
+/// that exposes the legacy `/auth` context root (Keycloak ≤ 16, or 17+
+/// started with `--http-relative-path=/auth`).
+///
+/// Keycloak serves a single token endpoint per realm that handles every
+/// grant type (`client_credentials`, `password`, `refresh_token`, …); this
+/// helper is named for its caller in this module ([`client_credentials`])
+/// but the URL itself is not grant-specific.
+#[deprecated(
+    since = "0.5.1",
+    note = "use `token_url(host, realm)` instead; for legacy `/auth` deployments pass `{host}/auth` as the host"
+)]
 pub fn client_credentials_url(host: &str, realm: &str) -> String {
     format!(
         "{}/auth/realms/{}/protocol/openid-connect/token",
@@ -152,6 +164,14 @@ pub fn client_credentials_url(host: &str, realm: &str) -> String {
     )
 }
 
+/// Build the OIDC token endpoint URL for a realm on a Keycloak server
+/// that exposes the legacy `/auth` context root. Alias of
+/// [`client_credentials_url`] kept for call-site readability — the
+/// underlying token endpoint is shared across all grant types.
+#[deprecated(
+    since = "0.5.1",
+    note = "use `token_url(host, realm)` instead; for legacy `/auth` deployments pass `{host}/auth` as the host"
+)]
 pub fn password_url(host: &str, realm: &str) -> String {
     format!(
         "{}/auth/realms/{}/protocol/openid-connect/token",
@@ -159,8 +179,40 @@ pub fn password_url(host: &str, realm: &str) -> String {
     )
 }
 
+/// Build the OIDC token endpoint URL for the `master` realm on a Keycloak
+/// server that exposes the legacy `/auth` context root. The endpoint is
+/// shared across grant types.
+#[deprecated(
+    since = "0.5.1",
+    note = "use `master_token_url(host)` instead; for legacy `/auth` deployments pass `{host}/auth` as the host"
+)]
 pub fn password_master_url(host: &str) -> String {
     format!("{}/auth/realms/master/protocol/openid-connect/token", host)
+}
+
+/// Build the OIDC token endpoint URL for a Keycloak realm using the
+/// Keycloak 17+ (Quarkus) path layout — no `/auth` context root.
+///
+/// Produces `{host}/realms/{realm}/protocol/openid-connect/token`, which is
+/// the default for Keycloak 17 and later. A trailing `/` on `host` is
+/// trimmed so callers can pass either `https://kc.example.com` or
+/// `https://kc.example.com/`. If a deployment still serves the legacy
+/// `/auth/realms/...` paths (Keycloak ≤ 16, or 17+ started with
+/// `--http-relative-path=/auth`), include `/auth` in the `host` argument,
+/// e.g. `https://kc.example.com/auth`.
+pub fn token_url(host: &str, realm: &str) -> String {
+    let host = host.trim_end_matches('/');
+    format!("{host}/realms/{realm}/protocol/openid-connect/token")
+}
+
+/// Build the OIDC token endpoint URL for the `master` realm using the
+/// Keycloak 17+ (Quarkus) path layout — no `/auth` context root.
+///
+/// A trailing `/` on `host` is trimmed. See [`token_url`] for notes on
+/// legacy `/auth` deployments.
+pub fn master_token_url(host: &str) -> String {
+    let host = host.trim_end_matches('/');
+    format!("{host}/realms/master/protocol/openid-connect/token")
 }
 
 pub async fn refresh(params: RefreshParams) -> Result<Response, String> {
