@@ -113,7 +113,7 @@ fn filter_active_contracts_by_create_argument(
 mod tests {
     use super::*;
     use crate::ledger_end;
-    use keycloak::login::{ClientCredentialsParams, client_credentials, client_credentials_url};
+    use keycloak::login::{ClientCredentialsParams, client_credentials, token_url};
     use std::env;
 
     #[tokio::test]
@@ -127,8 +127,11 @@ mod tests {
             client_id: env::var("KEYCLOAK_CLIENT_ID").expect("KEYCLOAK_CLIENT_ID must be set"),
             client_secret: env::var("LIB_TEST_LEDGER_END_CLIENT_SECRET")
                 .expect("LIB_TEST_LEDGER_END_CLIENT_SECRET must be set"),
-            url: client_credentials_url(
-                &env::var("KEYCLOAK_HOST").expect("KEYCLOAK_HOST must be set"),
+            url: token_url(
+                &format!(
+                    "{}/auth",
+                    env::var("KEYCLOAK_HOST").expect("KEYCLOAK_HOST must be set")
+                ),
                 &env::var("KEYCLOAK_REALM").expect("KEYCLOAK_REALM must be set"),
             ),
         };

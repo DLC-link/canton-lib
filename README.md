@@ -102,7 +102,7 @@ let auth = login::password(login::PasswordParams {
     client_id: "your-client-id".to_string(),
     username: "your-username".to_string(),
     password: "your-password".to_string(),
-    url: login::password_url("https://your-keycloak-host", "your-realm"),
+    url: login::token_url("https://your-keycloak-host", "your-realm"),
 }).await?;
 
 // Use auth.access_token for subsequent API calls
@@ -158,7 +158,8 @@ cargo run -p examples --bin delete_executed_transfers
 
 - `password(PasswordParams)` - Authenticate with username/password
 - `client_credentials(ClientCredentialsParams)` - Service account authentication
-- `password_url(host, realm)` - Build password grant URL
+- `token_url(host, realm)` - Build the realm token endpoint URL (Keycloak 17+ Quarkus layout; append `/auth` to `host` for legacy deployments)
+- `master_token_url(host)` - Build the `master` realm token endpoint URL
 
 ### `ledger`
 

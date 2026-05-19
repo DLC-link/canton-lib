@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `keycloak::login::token_url(host, realm)` and
+  `keycloak::login::master_token_url(host)` — build OIDC token endpoint URLs
+  using the Keycloak 17+ (Quarkus distribution) path layout, which omits the
+  `/auth` context root. Use these for default Keycloak 17+ deployments where
+  realm endpoints are served at `/realms/{realm}/...`. The existing
+  `client_credentials_url`, `password_url`, and `password_master_url`
+  helpers are unchanged and continue to emit the legacy `/auth/realms/...`
+  paths for backwards compatibility.
+
 ### Changed
 
 - Bumped `canton-api-client` from `3.3.0-0.1.0` to `3.6.0-0.1.0` (regenerated from the Canton 3.6.0 OpenAPI spec). Most spec-level changes are absorbed inside the conversion functions in `common::filters` and `ledger::common` with no caller-visible API changes; the only behavior change is the `ledger_end::get` note below.
