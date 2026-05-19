@@ -3,7 +3,6 @@ use canton_api_client::apis::default_api as canton_api;
 use canton_api_client::models;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::ops::Deref;
 
 #[derive(Debug, Clone)]
 pub struct Params {
@@ -54,7 +53,13 @@ pub async fn get_by_party(params: Params) -> Result<Vec<models::JsActiveContract
 
     let mut response: Vec<models::JsActiveContract> = Vec::new();
     for active_contract in result {
-        match active_contract.contract_entry.deref() {
+        let Some(contract_entry) = active_contract.contract_entry.as_deref() else {
+            log::warn!(
+                "post_v2_state_active_contracts: skipping entry with no contract_entry"
+            );
+            continue;
+        };
+        match contract_entry {
             models::JsContractEntry::JsContractEntryOneOf(a) => {
                 response.push(*a.js_active_contract.clone());
             }
@@ -88,8 +93,8 @@ fn filter_active_contracts_by_create_argument(
     contracts
         .into_iter()
         .filter(|contract| {
-            // Navigate: Box<CreatedEvent> → Option<Option<Value>>
-            if let Some(Some(create_arg)) = &contract.created_event.create_argument
+            // Navigate: Box<CreatedEvent> → Option<Value>
+            if let Some(create_arg) = &contract.created_event.create_argument
                 && let Some(obj) = create_arg.as_object()
             {
                 return filters.iter().all(|(key, value)| {

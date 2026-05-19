@@ -1,3 +1,9 @@
+// Lints disabled for the entire crate because the body is `tonic::include_proto!`
+// output we don't control. `large_enum_variant` is a property of the .proto
+// definitions (boxing here would require a code-generator patch), and
+// `doc_lazy_continuation` flags formatting in upstream proto doc comments.
+#![allow(clippy::large_enum_variant, clippy::doc_lazy_continuation)]
+
 pub mod google {
     pub mod rpc {
         tonic::include_proto!("google.rpc");

@@ -5,7 +5,7 @@ license.workspace = true
 version.workspace = true
 
 [dependencies]
-canton-api-client = "3.3.0-0.1.0"
+canton-api-client = "3.6.0-0.1.0"
 rust_decimal = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
