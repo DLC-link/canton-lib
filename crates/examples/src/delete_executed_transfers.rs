@@ -85,8 +85,11 @@ async fn main() -> Result<(), String> {
         client_id: env::var("KEYCLOAK_CLIENT_ID").expect("KEYCLOAK_CLIENT_ID must be set"),
         client_secret: env::var("KEYCLOAK_CLIENT_SECRET")
             .expect("KEYCLOAK_CLIENT_SECRET must be set"),
-        url: keycloak::login::client_credentials_url(
-            &env::var("KEYCLOAK_HOST").expect("KEYCLOAK_HOST must be set"),
+        url: keycloak::login::token_url(
+            &format!(
+                "{}/auth",
+                env::var("KEYCLOAK_HOST").expect("KEYCLOAK_HOST must be set")
+            ),
             &env::var("KEYCLOAK_REALM").expect("KEYCLOAK_REALM must be set"),
         ),
     };
