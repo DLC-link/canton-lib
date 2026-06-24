@@ -59,6 +59,16 @@ pub struct Submission {
     pub deduplication_period: Option<DeduplicationPeriod>,
     #[serde(rename = "disclosedContracts")]
     pub disclosed_contracts: Vec<transfer::DisclosedContract>,
+    /// Preferred package IDs for resolving package-name template references. When set, Canton
+    /// prefers these over its default smart-upgrade selection — required when a participant
+    /// has multiple vetted versions of the same package and the choice you need only exists
+    /// in one of them. See `commands.proto::package_id_selection_preference`.
+    #[serde(
+        rename = "packageIdSelectionPreference",
+        default,
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub package_id_selection_preference: Vec<String>,
     pub commands: Vec<Command>,
     #[serde(rename = "transactionFormat", skip_serializing_if = "Option::is_none")]
     pub transaction_format: Option<TransactionFormat>,
