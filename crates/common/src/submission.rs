@@ -20,6 +20,10 @@ pub struct ExerciseCommandData {
 // clippy-recommended fix, but it's a breaking API change for downstream callers
 // that construct these variants (cbtc-lib has several). Suppress the lint here and
 // revisit when those callers can be updated in lock-step.
+//
+// Variant order is load-bearing for untagged deserialization: `AllocationFactory`
+// must precede `Accept`, which only requires `extraArgs` and ignores unknown
+// fields, so an allocation payload would otherwise match `Accept` first.
 #[allow(clippy::large_enum_variant)]
 pub enum ChoiceArgumentsVariations {
     TransferFactory(transfer_factory::ChoiceArguments),
