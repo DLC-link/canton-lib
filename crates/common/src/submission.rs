@@ -1,4 +1,4 @@
-use crate::{accept, filters, transfer, transfer_factory};
+use crate::{accept, allocation_factory, filters, transfer, transfer_factory};
 use canton_api_client::models;
 use serde::{Deserialize, Serialize};
 
@@ -15,14 +15,15 @@ pub struct ExerciseCommandData {
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(untagged)]
-// `transfer_factory::ChoiceArguments` is ~10x larger than the other variants,
-// so every enum value pays the larger size. Boxing it would be the clippy-
-// recommended fix, but it's a breaking API change for downstream callers that
-// construct `TransferFactory(args)` (cbtc-lib has several). Suppress the lint
-// here and revisit when those callers can be updated in lock-step.
+// The factory variants (`TransferFactory`/`AllocationFactory`) are much larger
+// than the others, so every enum value pays the larger size. Boxing would be the
+// clippy-recommended fix, but it's a breaking API change for downstream callers
+// that construct these variants (cbtc-lib has several). Suppress the lint here and
+// revisit when those callers can be updated in lock-step.
 #[allow(clippy::large_enum_variant)]
 pub enum ChoiceArgumentsVariations {
     TransferFactory(transfer_factory::ChoiceArguments),
+    AllocationFactory(allocation_factory::ChoiceArguments),
     Accept(accept::ChoiceArguments),
     Generic(serde_json::Value),
 }
