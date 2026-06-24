@@ -133,17 +133,4 @@ mod tests {
         assert_eq!(response.disclosed_contracts[0].contract_id, "00disclosed");
         assert_eq!(response.choice_context_data.values["k"], "v");
     }
-
-    #[tokio::test]
-    async fn test_get_allocation_context() {
-        // Integration test against a real registry. Skipped unless env is set.
-        dotenvy::dotenv().ok();
-
-        let registry_url = std::env::var("REGISTRY_URL").unwrap_or_default();
-        let decentralized_party_id = std::env::var("DECENTRALIZED_PARTY_ID").unwrap_or_default();
-
-        if registry_url.is_empty() || decentralized_party_id.is_empty() {
-            return;
-        }
-    }
 }

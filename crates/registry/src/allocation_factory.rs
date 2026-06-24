@@ -116,17 +116,4 @@ mod tests {
         assert_eq!(json["choiceArguments"]["expectedAdmin"], "admin1");
         assert_eq!(json["choiceArguments"]["inputHoldingCids"][0], "cid1");
     }
-
-    #[tokio::test]
-    async fn test_get_allocation_factory() {
-        // Integration test against a real registry. Skipped unless env is set.
-        dotenvy::dotenv().ok();
-
-        let registry_url = std::env::var("REGISTRY_URL").unwrap_or_default();
-        let decentralized_party_id = std::env::var("DECENTRALIZED_PARTY_ID").unwrap_or_default();
-
-        if registry_url.is_empty() || decentralized_party_id.is_empty() {
-            return;
-        }
-    }
 }
