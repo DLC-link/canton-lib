@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-06-24
+
+### Added
+
+- Token-standard allocation (Delivery-versus-Payment) client support, mirroring
+  the existing transfer-instruction clients:
+  - `common::allocation` — `AllocationSpecification`, `SettlementInfo`,
+    `TransferLeg`, `Reference`, and `Metadata` domain types.
+  - `common::allocation_factory` — `AllocationFactory_Allocate` choice arguments
+    and the `getAllocationFactory` response (`factoryId` + `choiceContext`).
+  - `registry::allocation_factory::get` — fetches the allocation factory and
+    choice context (`/registry/allocation-instruction/v1/allocation-factory`).
+  - `registry::allocation_context::get` — fetches the execute-transfer /
+    withdraw / cancel choice contexts
+    (`/registry/allocations/v1/{allocationId}/choice-contexts/...`) via the
+    `AllocationChoice` selector.
+  - `common::consts::TEMPLATE_ALLOCATION_FACTORY` and
+    `common::consts::TEMPLATE_ALLOCATION` interface ids.
+  - `common::submission::ChoiceArgumentsVariations::AllocationFactory` variant
+    for building the `AllocationFactory_Allocate` exercise command.
+
 ## [0.6.0] - 2026-05-19
 
 ### Added
