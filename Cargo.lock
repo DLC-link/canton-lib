@@ -2707,7 +2707,6 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
- "tokio-macros",
 ]
 
 [[package]]
