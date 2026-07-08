@@ -13,3 +13,6 @@ tonic-prost = { version = "0.14.2" }
 [build-dependencies]
 tonic-prost-build = { version = "0.14.2" }
 walkdir = { version = "2.5.0" }
+
+[package.metadata.cargo-machete]
+ignored = ["prost", "prost-types", "tonic-prost"]
