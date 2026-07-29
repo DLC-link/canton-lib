@@ -15,10 +15,12 @@ pub struct Params {
     pub decentralized_party_id: String,
 }
 
-/// Parameters for accepting all pending CBTC transfers for a party.
+/// Parameters for accepting all pending transfers of an instrument for a party.
 pub struct AcceptAllParams {
     /// The receiver party ID
     pub receiver_party: String,
+    /// The instrument whose pending transfers to accept
+    pub instrument_id: common::transfer::InstrumentId,
     /// Ledger host URL
     pub ledger_host: String,
     /// Registry URL
@@ -159,6 +161,7 @@ pub async fn accept_all(params: AcceptAllParams) -> Result<AcceptAllResult, Stri
         params.ledger_host.clone(),
         params.receiver_party.clone(),
         auth.access_token.clone(),
+        params.instrument_id.clone(),
     )
     .await?;
 

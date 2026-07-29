@@ -3,11 +3,15 @@ pub struct Params {
     pub ledger_host: String,
     pub party: String,
     pub access_token: String,
+    /// The instrument whose holdings to fetch
+    pub instrument_id: common::transfer::InstrumentId,
 }
 
 pub async fn get(params: Params) -> Result<Vec<ledger::models::JsActiveContract>, String> {
     use ledger::ledger_end;
     use ledger::websocket::active_contracts;
+
+    let wanted_instrument = params.instrument_id.clone();
 
     let ledger_end_result = ledger_end::get(ledger_end::Params {
         access_token: params.access_token.clone(),
@@ -37,7 +41,7 @@ pub async fn get(params: Params) -> Result<Vec<ledger::models::JsActiveContract>
     let filtered: Vec<ledger::models::JsActiveContract> = result
         .into_iter()
         .filter(|ac| {
-            // Note: Filter out CBTC related contracts only
+            // Note: Filter out the requested instrument's contracts only
             if let Some(view) = ac.created_event.interface_views.clone() {
                 for iv in view {
                     let value = iv.view_value.unwrap_or_default().unwrap_or_default();
@@ -47,11 +51,19 @@ pub async fn get(params: Params) -> Result<Vec<ledger::models::JsActiveContract>
                         .unwrap_or_default()
                         .as_str()
                         .unwrap_or_default();
+                    let admin = instrument_id
+                        .get("admin")
+                        .unwrap_or_default()
+                        .as_str()
+                        .unwrap_or_default();
 
                     let lock = value.get("lock").unwrap_or_default();
 
                     // Note: We have to check the lock value to be null
-                    if instrument.to_lowercase().eq("cbtc") && lock.as_null().is_some() {
+                    if instrument.eq_ignore_ascii_case(&wanted_instrument.id)
+                        && admin == wanted_instrument.admin
+                        && lock.as_null().is_some()
+                    {
                         return true;
                     }
                 }
@@ -90,6 +102,11 @@ mod tests {
             ledger_host: ledger_host.to_string(),
             party: party_id,
             access_token: login_response.access_token,
+            instrument_id: common::transfer::InstrumentId {
+                admin: env::var("DECENTRALIZED_PARTY_ID")
+                    .expect("DECENTRALIZED_PARTY_ID must be set"),
+                id: env::var("INSTRUMENT_ID").expect("INSTRUMENT_ID must be set"),
+            },
         })
         .await
         .unwrap();

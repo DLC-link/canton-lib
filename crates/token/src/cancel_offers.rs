@@ -33,10 +33,12 @@ pub struct WithdrawBatchParams {
     pub decentralized_party_id: String,
 }
 
-/// Parameters for withdrawing all pending CBTC transfers for a party.
+/// Parameters for withdrawing all pending transfers of an instrument for a party.
 pub struct WithdrawAllParams {
     /// The sender party ID
     pub sender_party: String,
+    /// The instrument whose pending outgoing transfers to withdraw
+    pub instrument_id: common::transfer::InstrumentId,
     /// Ledger host URL
     pub ledger_host: String,
     /// Registry URL
@@ -347,6 +349,7 @@ pub async fn withdraw_all(params: WithdrawAllParams) -> Result<WithdrawAllResult
         params.ledger_host.clone(),
         params.sender_party.clone(),
         auth.access_token.clone(),
+        params.instrument_id.clone(),
     )
     .await?;
 

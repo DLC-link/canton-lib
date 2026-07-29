@@ -54,6 +54,7 @@ pub async fn allocate(params: Params) -> Result<(), String> {
             ledger_host: params.ledger_host.clone(),
             party: params.allocation.transfer_leg.sender.clone(),
             access_token: params.access_token.clone(),
+            instrument_id: params.allocation.transfer_leg.instrument_id.clone(),
         })
         .await?;
         input_holding_cids = contracts

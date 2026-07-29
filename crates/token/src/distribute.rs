@@ -56,6 +56,7 @@ pub async fn submit(params: Params) -> Result<transfer::SequentialChainedResult,
         ledger_host: params.ledger_host.clone(),
         party: params.sender.clone(),
         access_token: access_token.clone(),
+        instrument_id: params.instrument_id.clone(),
     })
     .await?;
 

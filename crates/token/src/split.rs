@@ -232,11 +232,17 @@ mod tests {
         let decentralized_party =
             env::var("DECENTRALIZED_PARTY_ID").expect("DECENTRALIZED_PARTY_ID must be set");
 
+        let instrument_id = common::transfer::InstrumentId {
+            admin: decentralized_party.clone(),
+            id: env::var("INSTRUMENT_ID").expect("INSTRUMENT_ID must be set"),
+        };
+
         // Get active contracts to use as input
         let contracts = active_contracts::get(active_contracts::Params {
             ledger_host: ledger_host.clone(),
             party: party.clone(),
             access_token: login_response.access_token.clone(),
+            instrument_id: instrument_id.clone(),
         })
         .await
         .unwrap();
@@ -255,10 +261,7 @@ mod tests {
                 common::decimal::DamlDecimal::parse("2.0").unwrap(),
                 common::decimal::DamlDecimal::parse("0.5").unwrap(),
             ], // Split into 1.0, 2.0, 0.5, and change
-            instrument_id: common::transfer::InstrumentId {
-                admin: decentralized_party.clone(),
-                id: "CBTC".to_string(),
-            },
+            instrument_id,
             input_holding_cids,
             ledger_host,
             access_token: login_response.access_token,

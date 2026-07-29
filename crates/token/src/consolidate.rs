@@ -21,6 +21,8 @@ pub struct ConsolidationResult {
 pub struct CheckConsolidateParams {
     /// The party ID whose UTXOs to check and consolidate
     pub party: String,
+    /// The instrument whose UTXOs to check and consolidate
+    pub instrument_id: common::transfer::InstrumentId,
     /// The threshold number of UTXOs. If the party has >= this many UTXOs, consolidation will be performed.
     /// Canton has a soft requirement of max 10 UTXOs per party per token type.
     pub threshold: usize,
@@ -38,6 +40,8 @@ pub struct CheckConsolidateParams {
 pub struct GetUtxoCountParams {
     /// The party ID whose UTXOs to count
     pub party: String,
+    /// The instrument whose UTXOs to count
+    pub instrument_id: common::transfer::InstrumentId,
     /// Ledger host URL
     pub ledger_host: String,
     /// Access token for the party
@@ -82,6 +86,7 @@ pub async fn get_utxo_count(params: GetUtxoCountParams) -> Result<usize, String>
         ledger_host: params.ledger_host,
         party: params.party,
         access_token: params.access_token,
+        instrument_id: params.instrument_id,
     })
     .await?;
 
@@ -122,6 +127,7 @@ pub async fn consolidate_utxos(params: ConsolidateParams) -> Result<Vec<String>,
             ledger_host: params.ledger_host.clone(),
             party: params.party.clone(),
             access_token: params.access_token.clone(),
+            instrument_id: params.instrument_id.clone(),
         })
         .await?;
 
@@ -145,6 +151,7 @@ pub async fn consolidate_utxos(params: ConsolidateParams) -> Result<Vec<String>,
         ledger_host: params.ledger_host.clone(),
         party: params.party.clone(),
         access_token: params.access_token.clone(),
+        instrument_id: params.instrument_id.clone(),
     })
     .await?;
 
@@ -329,13 +336,14 @@ pub async fn check_and_consolidate(
     // Get current UTXO count
     let utxo_count = get_utxo_count(GetUtxoCountParams {
         party: params.party.clone(),
+        instrument_id: params.instrument_id.clone(),
         ledger_host: params.ledger_host.clone(),
         access_token: params.access_token.clone(),
     })
     .await?;
 
     log::debug!(
-        "Party has {} CBTC UTXOs (threshold: {})",
+        "Party has {} UTXOs (threshold: {})",
         utxo_count,
         params.threshold
     );
@@ -355,10 +363,7 @@ pub async fn check_and_consolidate(
     // Perform consolidation
     let result_cids = consolidate_utxos(ConsolidateParams {
         party: params.party,
-        instrument_id: common::transfer::InstrumentId {
-            admin: params.decentralized_party_id.clone(),
-            id: "CBTC".to_string(),
-        },
+        instrument_id: params.instrument_id,
         input_holding_cids: None, // Consolidate all holdings
         ledger_host: params.ledger_host,
         access_token: params.access_token,
@@ -398,6 +403,11 @@ mod tests {
 
         let count_params = GetUtxoCountParams {
             party: env::var("PARTY_ID").expect("PARTY_ID must be set"),
+            instrument_id: common::transfer::InstrumentId {
+                admin: env::var("DECENTRALIZED_PARTY_ID")
+                    .expect("DECENTRALIZED_PARTY_ID must be set"),
+                id: env::var("INSTRUMENT_ID").expect("INSTRUMENT_ID must be set"),
+            },
             ledger_host: env::var("LEDGER_HOST").expect("LEDGER_HOST must be set"),
             access_token: login_response.access_token,
         };
@@ -424,6 +434,11 @@ mod tests {
 
         let consolidate_params = CheckConsolidateParams {
             party: env::var("PARTY_ID").expect("PARTY_ID must be set"),
+            instrument_id: common::transfer::InstrumentId {
+                admin: env::var("DECENTRALIZED_PARTY_ID")
+                    .expect("DECENTRALIZED_PARTY_ID must be set"),
+                id: env::var("INSTRUMENT_ID").expect("INSTRUMENT_ID must be set"),
+            },
             threshold: 10, // Canton's soft limit
             ledger_host: env::var("LEDGER_HOST").expect("LEDGER_HOST must be set"),
             access_token: login_response.access_token,
