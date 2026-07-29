@@ -318,12 +318,19 @@ mod tests {
 
     #[test]
     fn scan_dar_dirs_reads_real_dars() {
-        let result = scan_dar_dirs(&["cbtc-dars/dars/cbtc".to_string()]);
+        let result = scan_dar_dirs(&["dars/dependencies".to_string()]);
         assert!(result.is_ok());
         let packages = result.unwrap();
-        assert_eq!(packages.len(), 1);
-        assert_eq!(packages[0].name, "cbtc");
-        assert_eq!(packages[0].package_id.len(), 64);
+        let names: Vec<&str> = packages.iter().map(|p| p.name.as_str()).collect();
+        assert!(
+            names.contains(&"splice-api-token-holding-v1"),
+            "missing token-standard DAR in {names:?}"
+        );
+        assert!(
+            names.contains(&"utility-registry-holding-v0"),
+            "missing utility-registry DAR in {names:?}"
+        );
+        assert!(packages.iter().all(|p| p.package_id.len() == 64));
     }
 
     #[test]

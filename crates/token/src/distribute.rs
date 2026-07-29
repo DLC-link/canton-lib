@@ -134,8 +134,9 @@ mod tests {
             recipients,
             sender: env::var("PARTY_ID").expect("PARTY_ID must be set"),
             instrument_id: common::transfer::InstrumentId {
-                admin: common::consts::DEVNET_DECENTRALIZED_PARTY_ID.to_string(),
-                id: "CBTC".to_string(),
+                admin: env::var("DECENTRALIZED_PARTY_ID")
+                    .expect("DECENTRALIZED_PARTY_ID must be set"),
+                id: env::var("INSTRUMENT_ID").expect("INSTRUMENT_ID must be set"),
             },
             ledger_host: env::var("LEDGER_HOST").expect("LEDGER_HOST must be set"),
             registry_url: env::var("REGISTRY_URL").expect("REGISTRY_URL must be set"),

@@ -699,7 +699,7 @@ mod tests {
                 amount: common::decimal::DamlDecimal::parse("0.02").unwrap(),
                 instrument_id: common::transfer::InstrumentId {
                     admin: decentralized_party.clone(),
-                    id: "CBTC".to_string(),
+                    id: env::var("INSTRUMENT_ID").expect("INSTRUMENT_ID must be set"),
                 },
                 requested_at: chrono::Utc::now().to_rfc3339(),
                 execute_before: chrono::Utc::now()
