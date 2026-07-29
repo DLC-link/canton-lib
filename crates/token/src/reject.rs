@@ -1,4 +1,4 @@
-//! Reject a CBTC transfer offer as the receiver (`TransferInstruction_Reject`).
+//! Reject a token transfer offer as the receiver (`TransferInstruction_Reject`).
 //!
 //! Mirrors [`crate::accept`], but exercises the `TransferInstruction_Reject`
 //! choice and fetches the matching `/choice-contexts/reject` registry context.
@@ -17,7 +17,7 @@ pub struct Params {
     pub access_token: String,
     /// Registry URL
     pub registry_url: String,
-    /// Decentralized party ID for CBTC
+    /// The token's decentralized party ID (instrument admin)
     pub decentralized_party_id: String,
 }
 
@@ -66,7 +66,7 @@ async fn reject_context(
         .map_err(|e| format!("Failed to parse registry response: {e}"))
 }
 
-/// Reject a CBTC transfer offer as the receiving party.
+/// Reject a token transfer offer as the receiving party.
 ///
 /// 1. Fetches the reject choice-context from the registry.
 /// 2. Constructs the `TransferInstruction_Reject` exercise command.

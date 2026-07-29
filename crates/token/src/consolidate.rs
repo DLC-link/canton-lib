@@ -32,7 +32,7 @@ pub struct CheckConsolidateParams {
     pub access_token: String,
     /// Registry URL
     pub registry_url: String,
-    /// Decentralized party ID for CBTC
+    /// The token's decentralized party ID (instrument admin)
     pub decentralized_party_id: String,
 }
 
@@ -52,7 +52,7 @@ pub struct GetUtxoCountParams {
 pub struct ConsolidateParams {
     /// The party ID whose UTXOs to consolidate
     pub party: String,
-    /// The instrument ID (typically CBTC)
+    /// The instrument to consolidate
     pub instrument_id: common::transfer::InstrumentId,
     /// Optional specific holding CIDs to consolidate. If None, all holdings will be consolidated.
     pub input_holding_cids: Option<Vec<String>>,
@@ -62,24 +62,28 @@ pub struct ConsolidateParams {
     pub access_token: String,
     /// Registry URL
     pub registry_url: String,
-    /// Decentralized party ID for CBTC
+    /// The token's decentralized party ID (instrument admin)
     pub decentralized_party_id: String,
 }
 
-/// Get the count of CBTC UTXOs for a party.
+/// Get the count of an instrument's UTXOs for a party.
 ///
 /// # Example
 /// ```ignore
-/// use cbtc::consolidate;
+/// use token::consolidate;
 ///
 /// let params = consolidate::GetUtxoCountParams {
 ///     party: "party::1220...".to_string(),
+///     instrument_id: common::transfer::InstrumentId {
+///         admin: "token-admin::1220...".to_string(),
+///         id: "TOKEN".to_string(),
+///     },
 ///     ledger_host: "https://participant.example.com".to_string(),
 ///     access_token: "eyJ...".to_string(),
 /// };
 ///
 /// let count = consolidate::get_utxo_count(params).await?;
-/// log::debug!("Party has {} CBTC UTXOs", count);
+/// log::debug!("Party has {} UTXOs", count);
 /// ```
 pub async fn get_utxo_count(params: GetUtxoCountParams) -> Result<usize, String> {
     let contracts = active_contracts::get(active_contracts::Params {
@@ -93,26 +97,26 @@ pub async fn get_utxo_count(params: GetUtxoCountParams) -> Result<usize, String>
     Ok(contracts.len())
 }
 
-/// Consolidate all CBTC UTXOs into a single UTXO via self-transfer.
+/// Consolidate all of an instrument's UTXOs into a single UTXO via self-transfer.
 ///
 /// This performs a "merge-split" operation where the party sends all their
 /// holdings to themselves, resulting in a single consolidated UTXO.
 ///
 /// # Example
 /// ```ignore
-/// use cbtc::consolidate;
+/// use token::consolidate;
 ///
 /// let params = consolidate::ConsolidateParams {
 ///     party: "party::1220...".to_string(),
 ///     instrument_id: common::transfer::InstrumentId {
-///         admin: "cbtc-network::1220...".to_string(),
-///         id: "CBTC".to_string(),
+///         admin: "token-admin::1220...".to_string(),
+///         id: "TOKEN".to_string(),
 ///     },
 ///     input_holding_cids: None, // Consolidate all holdings
 ///     ledger_host: "https://participant.example.com".to_string(),
 ///     access_token: "eyJ...".to_string(),
 ///     registry_url: "https://api.utilities.digitalasset-dev.com".to_string(),
-///     decentralized_party_id: "cbtc-network::1220...".to_string(),
+///     decentralized_party_id: "token-admin::1220...".to_string(),
 /// };
 ///
 /// let result_cids = consolidate::consolidate_utxos(params).await?;
@@ -312,15 +316,19 @@ fn parse_consolidate_response(
 ///
 /// # Example
 /// ```ignore
-/// use cbtc::consolidate;
+/// use token::consolidate;
 ///
 /// let params = consolidate::CheckConsolidateParams {
 ///     party: "party::1220...".to_string(),
+///     instrument_id: common::transfer::InstrumentId {
+///         admin: "token-admin::1220...".to_string(),
+///         id: "TOKEN".to_string(),
+///     },
 ///     threshold: 10,
 ///     ledger_host: "https://participant.example.com".to_string(),
 ///     access_token: "eyJ...".to_string(),
 ///     registry_url: "https://api.utilities.digitalasset-dev.com".to_string(),
-///     decentralized_party_id: "cbtc-network::1220...".to_string(),
+///     decentralized_party_id: "token-admin::1220...".to_string(),
 /// };
 ///
 /// let result = consolidate::check_and_consolidate(params).await?;

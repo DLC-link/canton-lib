@@ -11,7 +11,7 @@ pub struct Params {
     pub access_token: String,
     /// Registry URL
     pub registry_url: String,
-    /// Decentralized party ID for CBTC
+    /// The token's decentralized party ID (instrument admin)
     pub decentralized_party_id: String,
 }
 
@@ -25,7 +25,7 @@ pub struct AcceptAllParams {
     pub ledger_host: String,
     /// Registry URL
     pub registry_url: String,
-    /// Decentralized party ID for CBTC
+    /// The token's decentralized party ID (instrument admin)
     pub decentralized_party_id: String,
     // Keycloak authentication
     pub keycloak_client_id: String,
@@ -52,7 +52,7 @@ pub struct AcceptAllResult {
     pub failed_count: usize,
 }
 
-/// Accept a CBTC transfer as the receiving party.
+/// Accept a token transfer as the receiving party.
 ///
 /// This function performs the following steps:
 /// 1. Fetches the choice context from the registry for accepting the transfer
@@ -60,8 +60,8 @@ pub struct AcceptAllResult {
 /// 3. Submits the transaction to the ledger
 ///
 /// # Example
-/// ```no_run
-/// use cbtc::accept;
+/// ```ignore
+/// use token::accept;
 ///
 /// let params = accept::Params {
 ///     transfer_offer_contract_id: "00abc123...".to_string(),
@@ -69,7 +69,7 @@ pub struct AcceptAllResult {
 ///     ledger_host: "https://participant.example.com".to_string(),
 ///     access_token: "eyJ...".to_string(),
 ///     registry_url: "https://api.utilities.digitalasset-dev.com".to_string(),
-///     decentralized_party_id: "cbtc-network::1220...".to_string(),
+///     decentralized_party_id: "token-admin::1220...".to_string(),
 /// };
 ///
 /// accept::submit(params).await?;
@@ -131,12 +131,12 @@ pub async fn submit(params: Params) -> Result<(), String> {
     Ok(())
 }
 
-/// Accept all pending CBTC transfers for a party.
+/// Accept all pending transfers of an instrument for a party.
 ///
 /// This function:
 /// 1. Authenticates with Keycloak
 /// 2. Fetches all pending TransferInstruction contracts for the party
-/// 3. Filters for CBTC transfers where the party is the receiver
+/// 3. Filters for transfers of the given instrument where the party is the receiver
 /// 4. Batches acceptances into groups of 5 per submission
 ///
 /// Returns a summary of successful and failed acceptances.
@@ -176,8 +176,8 @@ pub async fn accept_all(params: AcceptAllParams) -> Result<AcceptAllResult, Stri
 
     log::debug!("Found {} pending transfer(s)", pending_transfers.len());
 
-    // Fetch accept_context once (assumed to be the same for all CBTC transfers in this run)
-    log::debug!("Fetching accept context (shared for all CBTC transfers)...");
+    // Fetch accept_context once (assumed to be the same for all transfers in this run)
+    log::debug!("Fetching accept context (shared for all transfers)...");
     let first_contract_id = &pending_transfers[0].created_event.contract_id;
     let accept_context = registry::accept_context::get(registry::accept_context::Params {
         registry_url: params.registry_url.clone(),

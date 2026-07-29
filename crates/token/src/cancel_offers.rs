@@ -11,11 +11,11 @@ pub struct Params {
     pub access_token: String,
     /// Registry URL
     pub registry_url: String,
-    /// Decentralized party ID for CBTC
+    /// The token's decentralized party ID (instrument admin)
     pub decentralized_party_id: String,
 }
 
-/// Parameters for withdrawing a specific set of CBTC transfer offers (by contract
+/// Parameters for withdrawing a specific set of transfer offers (by contract
 /// id) as the sending party, using an existing access token. Submissions are
 /// batched; the registry withdraw-context is fetched once and shared.
 pub struct WithdrawBatchParams {
@@ -29,7 +29,7 @@ pub struct WithdrawBatchParams {
     pub access_token: String,
     /// Registry URL
     pub registry_url: String,
-    /// Decentralized party ID for CBTC
+    /// The token's decentralized party ID (instrument admin)
     pub decentralized_party_id: String,
 }
 
@@ -43,7 +43,7 @@ pub struct WithdrawAllParams {
     pub ledger_host: String,
     /// Registry URL
     pub registry_url: String,
-    /// Decentralized party ID for CBTC
+    /// The token's decentralized party ID (instrument admin)
     pub decentralized_party_id: String,
     // Keycloak authentication
     pub keycloak_client_id: String,
@@ -70,7 +70,7 @@ pub struct WithdrawAllResult {
     pub failed_count: usize,
 }
 
-/// Withdraw a CBTC transfer as the sending party.
+/// Withdraw a token transfer as the sending party.
 ///
 /// This function performs the following steps:
 /// 1. Fetches the choice context from the registry for withdrawing the transfer
@@ -78,19 +78,19 @@ pub struct WithdrawAllResult {
 /// 3. Submits the transaction to the ledger
 ///
 /// # Example
-/// ```no_run
-/// use cbtc::withdraw;
+/// ```ignore
+/// use token::cancel_offers;
 ///
-/// let params = withdraw::Params {
+/// let params = cancel_offers::Params {
 ///     transfer_offer_contract_id: "00abc123...".to_string(),
 ///     sender_party: "sender-party::1220...".to_string(),
 ///     ledger_host: "https://participant.example.com".to_string(),
 ///     access_token: "eyJ...".to_string(),
 ///     registry_url: "https://api.utilities.digitalasset-dev.com".to_string(),
-///     decentralized_party_id: "cbtc-network::1220...".to_string(),
+///     decentralized_party_id: "token-admin::1220...".to_string(),
 /// };
 ///
-/// withdraw::submit(params).await?;
+/// cancel_offers::submit(params).await?;
 /// ```
 pub async fn submit(params: Params) -> Result<(), String> {
     // Get the choice context for withdrawing the transfer from the registry
@@ -232,11 +232,11 @@ fn record_withdraw(
     });
 }
 
-/// Withdraw a specific set of CBTC transfer offers by contract id, batched.
+/// Withdraw a specific set of transfer offers by contract id, batched.
 ///
 /// Like [`withdraw_all`] but operates on a provided list of contract ids and an
 /// existing access token (no re-authentication). The registry withdraw-context
-/// is fetched once (shared across CBTC transfers) and reused for every command;
+/// is fetched once (shared across transfers) and reused for every command;
 /// commands are submitted in batches of 5. Because a Canton transaction is
 /// atomic, a batch containing a non-withdrawable offer is retried per-offer so
 /// the withdrawable offers still succeed and only the offender(s) fail.
@@ -254,7 +254,7 @@ pub async fn withdraw_batch(params: WithdrawBatchParams) -> Result<WithdrawAllRe
         });
     }
 
-    // Fetch the withdraw context once (same for all CBTC transfers).
+    // Fetch the withdraw context once (same for all transfers).
     let withdraw_context = registry::accept_context::get(registry::accept_context::Params {
         registry_url: params.registry_url.clone(),
         decentralized_party_id: params.decentralized_party_id.clone(),
@@ -317,12 +317,12 @@ pub async fn withdraw_batch(params: WithdrawBatchParams) -> Result<WithdrawAllRe
     })
 }
 
-/// Withdraw all pending CBTC transfers for a party (transfers sent by this party).
+/// Withdraw all pending transfers of an instrument for a party (transfers sent by this party).
 ///
 /// This function:
 /// 1. Authenticates with Keycloak
 /// 2. Fetches all pending TransferInstruction contracts sent by the party
-/// 3. Filters for CBTC transfers where the party is the sender
+/// 3. Filters for transfers of the given instrument where the party is the sender
 /// 4. Batches withdrawals into groups of 5 per submission
 ///
 /// Returns a summary of successful and failed withdrawals.
@@ -367,8 +367,8 @@ pub async fn withdraw_all(params: WithdrawAllParams) -> Result<WithdrawAllResult
         pending_transfers.len()
     );
 
-    // Fetch withdraw_context once (same for all CBTC transfers)
-    log::debug!("Fetching withdraw context (shared for all CBTC transfers)...");
+    // Fetch withdraw_context once (same for all transfers)
+    log::debug!("Fetching withdraw context (shared for all transfers)...");
     let first_contract_id = &pending_transfers[0].created_event.contract_id;
     let withdraw_context = registry::accept_context::get(registry::accept_context::Params {
         registry_url: params.registry_url.clone(),
