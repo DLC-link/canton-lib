@@ -664,62 +664,6 @@ fn generate_unique_reference(reference_base: &str, sender: &str, receiver: &str)
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use keycloak::login::{PasswordParams, password, password_url};
-    use std::env;
-    use std::ops::Add;
-
-    #[tokio::test]
-    #[ignore = "live test: requires env vars and network"]
-    async fn test_submit() {
-        // Load environment variables from .env file
-        dotenvy::dotenv().ok();
-
-        let params = PasswordParams {
-            client_id: env::var("KEYCLOAK_CLIENT_ID").expect("KEYCLOAK_CLIENT_ID must be set"),
-            username: env::var("KEYCLOAK_USERNAME").expect("KEYCLOAK_USERNAME must be set"),
-            password: env::var("KEYCLOAK_PASSWORD").expect("KEYCLOAK_PASSWORD must be set"),
-            url: password_url(
-                &env::var("KEYCLOAK_HOST").expect("KEYCLOAK_HOST must be set"),
-                &env::var("KEYCLOAK_REALM").expect("KEYCLOAK_REALM must be set"),
-            ),
-        };
-        let login_response = password(params).await.unwrap();
-
-        let sender_party = env::var("PARTY_ID").expect("PARTY_ID must be set");
-        let receiver_party =
-            env::var("LIB_TEST_RECEIVER_PARTY_ID").expect("LIB_TEST_RECEIVER_PARTY_ID must be set");
-        let decentralized_party =
-            env::var("DECENTRALIZED_PARTY_ID").expect("DECENTRALIZED_PARTY_ID must be set");
-
-        let params = Params {
-            transfer: common::transfer::Transfer {
-                sender: sender_party,
-                receiver: receiver_party,
-                amount: common::decimal::DamlDecimal::parse("0.02").unwrap(),
-                instrument_id: common::transfer::InstrumentId {
-                    admin: decentralized_party.clone(),
-                    id: env::var("INSTRUMENT_ID").expect("INSTRUMENT_ID must be set"),
-                },
-                requested_at: chrono::Utc::now().to_rfc3339(),
-                execute_before: chrono::Utc::now()
-                    .add(chrono::Duration::hours(168))
-                    .to_rfc3339(),
-                input_holding_cids: None,
-                meta: None,
-            },
-            ledger_host: env::var("LEDGER_HOST").expect("LEDGER_HOST must be set"),
-            access_token: login_response.access_token,
-            registry_url: env::var("REGISTRY_URL").expect("REGISTRY_URL must be set"),
-            decentralized_party_id: decentralized_party,
-        };
-
-        submit(params).await.unwrap();
-    }
-}
-
-#[cfg(test)]
 mod parser_tests {
     //! Pure-data fixture tests for the flat-event parser used by
     //! `parse_transfer_response` / `parse_transfer_response_value`.

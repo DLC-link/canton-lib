@@ -75,43 +75,36 @@ pub async fn get(params: Params) -> Result<Vec<ledger::models::JsActiveContract>
 }
 
 #[cfg(test)]
-mod tests {
+// Each test holds SERIAL_LOCK across its awaits on purpose: the lock spans
+// the whole test body so tests never interleave, and `#[tokio::test]` runs
+// on a single-thread runtime, so a held std guard cannot deadlock it.
+#[allow(clippy::await_holding_lock)]
+mod integration_tests {
+    //! Live integration test for the holdings ACS query. Shared setup, the
+    //! required env vars, and the run command are documented in
+    //! [`crate::test_utils`].
+
     use super::*;
-    use keycloak::login::{PasswordParams, password, password_url};
-    use std::env;
+    use crate::test_utils::{IntegrationTestState, SERIAL_LOCK};
 
     #[tokio::test]
-    #[ignore = "live test: requires env vars and network"]
-    async fn test_get_by_party() {
-        dotenvy::dotenv().ok();
-
-        let ledger_host = env::var("LEDGER_HOST").expect("LEDGER_HOST must be set");
-        let party_id = env::var("PARTY_ID").expect("PARTY_ID must be set");
-
-        let params = PasswordParams {
-            client_id: env::var("KEYCLOAK_CLIENT_ID").expect("KEYCLOAK_CLIENT_ID must be set"),
-            username: env::var("KEYCLOAK_USERNAME").expect("KEYCLOAK_USERNAME must be set"),
-            password: env::var("KEYCLOAK_PASSWORD").expect("KEYCLOAK_PASSWORD must be set"),
-            url: password_url(
-                &env::var("KEYCLOAK_HOST").expect("KEYCLOAK_HOST must be set"),
-                &env::var("KEYCLOAK_REALM").expect("KEYCLOAK_REALM must be set"),
-            ),
-        };
-        let login_response = password(params).await.unwrap();
+    #[ignore = "integration test: requires live devnet and env vars"]
+    async fn integration_get_by_party() {
+        let _guard = SERIAL_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let state = IntegrationTestState::from_env();
 
         let contracts = get(Params {
-            ledger_host: ledger_host.to_string(),
-            party: party_id,
-            access_token: login_response.access_token,
-            instrument_id: common::transfer::InstrumentId {
-                admin: env::var("DECENTRALIZED_PARTY_ID")
-                    .expect("DECENTRALIZED_PARTY_ID must be set"),
-                id: env::var("INSTRUMENT_ID").expect("INSTRUMENT_ID must be set"),
-            },
+            ledger_host: state.ledger_host.clone(),
+            party: state.party_1.clone(),
+            access_token: state.access_token().await,
+            instrument_id: state.instrument.clone(),
         })
         .await
-        .unwrap();
+        .expect("active_contracts::get failed");
 
-        assert!(!contracts.is_empty());
+        assert!(
+            !contracts.is_empty(),
+            "party 1 should hold at least one active contract"
+        );
     }
 }

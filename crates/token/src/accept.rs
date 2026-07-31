@@ -375,29 +375,3 @@ pub async fn accept_all(params: AcceptAllParams) -> Result<AcceptAllResult, Stri
         results,
     })
 }
-
-#[cfg(test)]
-mod tests {
-    #[tokio::test]
-    async fn test_accept_transfer() {
-        // This test requires a valid transfer_offer_contract_id from an actual transfer
-        // Load environment variables from .env file
-        dotenvy::dotenv().ok();
-
-        let transfer_offer_cid = std::env::var("LIB_TEST_TRANSFER_OFFER_CID").ok();
-
-        if transfer_offer_cid.is_none() {
-            log::debug!("Skipping test: LIB_TEST_TRANSFER_OFFER_CID not set");
-            log::debug!(
-                "To test this, first create a transfer and set LIB_TEST_TRANSFER_OFFER_CID to the TransferOffer contract ID"
-            );
-            return;
-        }
-
-        // Note: This would require:
-        // 1. A valid transfer_offer_contract_id from a pending transfer
-        // 2. Authentication as the receiver party
-        // 3. The transfer must be in a state ready for acceptance
-        log::debug!("Accept transfer test would run here with valid transfer offer");
-    }
-}
