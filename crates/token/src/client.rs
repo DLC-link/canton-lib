@@ -109,11 +109,14 @@ impl TokenClient {
 
     /// Send tokens to a receiver as a two-phase transfer (they must accept).
     /// `reference` is stored in the transfer's metadata when given.
+    /// `execute_before` bounds how long the offer stays acceptable; it
+    /// defaults to one week when `None`.
     pub async fn send(
         &mut self,
         receiver: String,
         amount: DamlDecimal,
         reference: Option<String>,
+        execute_before: Option<chrono::Duration>,
     ) -> Result<(), String> {
         let access_token = self.fresh_token().await?;
 
@@ -136,7 +139,9 @@ impl TokenClient {
                 amount,
                 instrument_id: self.config.instrument.clone(),
                 requested_at: chrono::Utc::now().to_rfc3339(),
-                execute_before: (chrono::Utc::now() + chrono::Duration::hours(168)).to_rfc3339(),
+                execute_before: (chrono::Utc::now()
+                    + execute_before.unwrap_or(chrono::Duration::hours(168)))
+                .to_rfc3339(),
                 input_holding_cids: None,
                 meta,
             },
