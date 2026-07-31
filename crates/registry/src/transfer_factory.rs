@@ -47,47 +47,55 @@ pub async fn get(params: Params) -> Result<common::transfer_factory::Response, S
 }
 
 #[cfg(test)]
-mod tests {
+mod integration_tests {
+    //! Live integration test for the registry transfer-factory endpoint.
+    //! It needs these env vars (a `.env` file is loaded when present):
+    //! `LEDGER_HOST`, `PARTY_ID_1`, `PARTY_ID_2`, `DECENTRALIZED_PARTY_ID`,
+    //! `INSTRUMENT_ID`, `KEYCLOAK_CLIENT_ID`, `KEYCLOAK_USER`,
+    //! `KEYCLOAK_PASSWORD`, `KEYCLOAK_URL` (full token endpoint URL).
+
     use super::*;
     use crate::consts;
-    use keycloak::login::{PasswordParams, password, token_url};
+    use keycloak::login::{PasswordParams, password};
     use std::collections::HashMap;
     use std::env;
     use std::ops::Add;
+
+    fn var(name: &str) -> String {
+        env::var(name).unwrap_or_else(|_| panic!("{name} must be set for integration tests"))
+    }
+
     #[tokio::test]
-    #[ignore = "live test: requires env vars and network"]
-    async fn test_transfer_factory() {
+    #[ignore = "integration test: requires live devnet and env vars"]
+    async fn integration_transfer_factory() {
         dotenvy::dotenv().ok();
 
-        let ledger_host = env::var("LEDGER_HOST").expect("LEDGER_HOST must be set");
-        let party_id = env::var("PARTY_ID").expect("PARTY_ID must be set");
+        let decentralized_party_id = var("DECENTRALIZED_PARTY_ID");
+        let instrument_id = var("INSTRUMENT_ID");
+        let party_1 = var("PARTY_ID_1");
 
-        let params = PasswordParams {
-            client_id: env::var("KEYCLOAK_CLIENT_ID").expect("KEYCLOAK_CLIENT_ID must be set"),
-            username: env::var("KEYCLOAK_USERNAME").expect("KEYCLOAK_USERNAME must be set"),
-            password: env::var("KEYCLOAK_PASSWORD").expect("KEYCLOAK_PASSWORD must be set"),
-            url: token_url(
-                &format!(
-                    "{}/auth",
-                    env::var("KEYCLOAK_HOST").expect("KEYCLOAK_HOST must be set")
-                ),
-                &env::var("KEYCLOAK_REALM").expect("KEYCLOAK_REALM must be set"),
-            ),
-        };
-        let login_response = password(params).await.unwrap();
-
-        let contracts = get_active_contracts(ACParams {
-            ledger_host: ledger_host.to_string(),
-            party: party_id,
-            access_token: login_response.access_token,
+        let login = password(PasswordParams {
+            client_id: var("KEYCLOAK_CLIENT_ID"),
+            username: var("KEYCLOAK_USER"),
+            password: var("KEYCLOAK_PASSWORD"),
+            url: var("KEYCLOAK_URL"),
         })
         .await
-        .unwrap();
+        .expect("keycloak login failed");
 
-        let mut input_contract_ids: Vec<String> = Vec::new();
-        for contract in &contracts {
-            input_contract_ids.push(contract.created_event.contract_id.clone());
-        }
+        let contracts = get_active_contracts(ACParams {
+            ledger_host: var("LEDGER_HOST"),
+            party: party_1.clone(),
+            access_token: login.access_token,
+            instrument_id: instrument_id.clone(),
+        })
+        .await
+        .expect("failed to fetch holdings");
+
+        let input_contract_ids: Vec<String> = contracts
+            .iter()
+            .map(|contract| contract.created_event.contract_id.clone())
+            .collect();
 
         let mut transfer_meta: HashMap<String, String> = HashMap::new();
         transfer_meta.insert(
@@ -97,18 +105,17 @@ mod tests {
 
         let params = Params {
             registry_url: consts::DEVNET_REGISTRY_URL.to_string(),
-            decentralized_party_id: common::consts::DEVNET_DECENTRALIZED_PARTY_ID.to_string(),
+            decentralized_party_id: decentralized_party_id.clone(),
             request: Request {
                 choice_arguments: common::transfer_factory::ChoiceArguments {
-                    expected_admin: common::consts::DEVNET_DECENTRALIZED_PARTY_ID.to_string(),
+                    expected_admin: decentralized_party_id.clone(),
                     transfer: common::transfer::Transfer {
-                        sender: env::var("PARTY_ID").expect("PARTY_ID must be set"),
-                        receiver: env::var("LIB_TEST_RECEIVER_PARTY_ID")
-                            .expect("LIB_TEST_RECEIVER_PARTY_ID must be set"),
+                        sender: party_1,
+                        receiver: var("PARTY_ID_2"),
                         amount: common::decimal::DamlDecimal::parse("0.02").unwrap(),
                         instrument_id: common::transfer::InstrumentId {
-                            admin: common::consts::DEVNET_DECENTRALIZED_PARTY_ID.to_string(),
-                            id: "CBTC".to_string(),
+                            admin: decentralized_party_id,
+                            id: instrument_id,
                         },
                         requested_at: chrono::Utc::now().to_rfc3339(),
                         execute_before: chrono::Utc::now()
@@ -132,7 +139,7 @@ mod tests {
             },
         };
 
-        let _result = get(params).await.unwrap();
+        let _result = get(params).await.expect("transfer factory request failed");
     }
 
     #[derive(Debug, Clone)]
@@ -140,6 +147,7 @@ mod tests {
         pub ledger_host: String,
         pub party: String,
         pub access_token: String,
+        pub instrument_id: String,
     }
 
     async fn get_active_contracts(
@@ -153,6 +161,8 @@ mod tests {
             ledger_host: params.ledger_host.clone(),
         })
         .await?;
+
+        let wanted_instrument = params.instrument_id;
 
         let result = active_contracts::get(active_contracts::Params {
             ledger_host: params.ledger_host,
@@ -176,7 +186,7 @@ mod tests {
         let filtered: Vec<ledger::models::JsActiveContract> = result
             .into_iter()
             .filter(|ac| {
-                // Note: Filter out CBTC related contracts only
+                // Note: Filter out the requested instrument's contracts only
                 if let Some(view) = ac.created_event.interface_views.clone() {
                     for iv in view {
                         let value = iv.view_value.unwrap_or_default().unwrap_or_default();
@@ -190,7 +200,9 @@ mod tests {
                         let lock = value.get("lock").unwrap_or_default();
 
                         // Note: We have to check the lock value to be null
-                        if instrument.to_lowercase().eq("cbtc") && lock.as_null().is_some() {
+                        if instrument.eq_ignore_ascii_case(&wanted_instrument)
+                            && lock.as_null().is_some()
+                        {
                             return true;
                         }
                     }
