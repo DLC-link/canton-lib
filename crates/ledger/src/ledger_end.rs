@@ -40,36 +40,40 @@ pub async fn get(params: Params) -> Result<Response, String> {
 }
 
 #[cfg(test)]
-mod tests {
+mod integration_tests {
+    //! Live integration test for the ledger end query. It authenticates
+    //! with the client-credentials flow and needs these env vars (a `.env`
+    //! file is loaded when present): `LEDGER_HOST`, `KEYCLOAK_URL` (full
+    //! token endpoint URL), `KEYCLOAK_CLIENT_AUTH_CLIENT_ID`,
+    //! `KEYCLOAK_CLIENT_AUTH_CLIENT_SECRET`.
+
     use super::*;
-    use keycloak::login::{ClientCredentialsParams, client_credentials, token_url};
+    use keycloak::login::{ClientCredentialsParams, client_credentials};
     use std::env;
 
+    fn var(name: &str) -> String {
+        env::var(name).unwrap_or_else(|_| panic!("{name} must be set for integration tests"))
+    }
+
     #[tokio::test]
-    #[ignore = "live test: requires env vars and network"]
-    async fn test_get_ledger_end() {
+    #[ignore = "integration test: requires live devnet and env vars"]
+    async fn integration_get_ledger_end() {
         dotenvy::dotenv().ok();
 
-        let params = ClientCredentialsParams {
-            client_id: env::var("KEYCLOAK_CLIENT_ID").expect("KEYCLOAK_CLIENT_ID must be set"),
-            client_secret: env::var("LIB_TEST_LEDGER_END_CLIENT_SECRET")
-                .expect("LIB_TEST_LEDGER_END_CLIENT_SECRET must be set"),
-            url: token_url(
-                &format!(
-                    "{}/auth",
-                    env::var("KEYCLOAK_HOST").expect("KEYCLOAK_HOST must be set")
-                ),
-                &env::var("KEYCLOAK_REALM").expect("KEYCLOAK_REALM must be set"),
-            ),
-        };
-        let result = client_credentials(params).await.unwrap();
+        let login = client_credentials(ClientCredentialsParams {
+            client_id: var("KEYCLOAK_CLIENT_AUTH_CLIENT_ID"),
+            client_secret: var("KEYCLOAK_CLIENT_AUTH_CLIENT_SECRET"),
+            url: var("KEYCLOAK_URL"),
+        })
+        .await
+        .expect("keycloak client-credentials login failed");
 
-        let params = Params {
-            access_token: result.access_token,
-            ledger_host: env::var("LEDGER_HOST").expect("LEDGER_HOST must be set"),
-        };
-
-        let response = get(params).await.expect("Failed to get ledger end");
+        let response = get(Params {
+            access_token: login.access_token,
+            ledger_host: var("LEDGER_HOST"),
+        })
+        .await
+        .expect("failed to get ledger end");
         assert!(response.offset >= 0);
     }
 }
