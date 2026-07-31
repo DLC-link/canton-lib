@@ -204,78 +204,8 @@ pub async fn submit(params: Params) -> Result<SplitResult, String> {
     })
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::active_contracts;
-    use keycloak::login::{PasswordParams, password, password_url};
-    use std::env;
-
-    #[tokio::test]
-    #[ignore = "live test: requires env vars and network"]
-    async fn test_split() {
-        // Load environment variables from .env file
-        dotenvy::dotenv().ok();
-
-        let params = PasswordParams {
-            client_id: env::var("KEYCLOAK_CLIENT_ID").expect("KEYCLOAK_CLIENT_ID must be set"),
-            username: env::var("KEYCLOAK_USERNAME").expect("KEYCLOAK_USERNAME must be set"),
-            password: env::var("KEYCLOAK_PASSWORD").expect("KEYCLOAK_PASSWORD must be set"),
-            url: password_url(
-                &env::var("KEYCLOAK_HOST").expect("KEYCLOAK_HOST must be set"),
-                &env::var("KEYCLOAK_REALM").expect("KEYCLOAK_REALM must be set"),
-            ),
-        };
-        let login_response = password(params).await.unwrap();
-
-        let party = env::var("PARTY_ID").expect("PARTY_ID must be set");
-        let ledger_host = env::var("LEDGER_HOST").expect("LEDGER_HOST must be set");
-        let decentralized_party =
-            env::var("DECENTRALIZED_PARTY_ID").expect("DECENTRALIZED_PARTY_ID must be set");
-
-        let instrument_id = common::transfer::InstrumentId {
-            admin: decentralized_party.clone(),
-            id: env::var("INSTRUMENT_ID").expect("INSTRUMENT_ID must be set"),
-        };
-
-        // Get active contracts to use as input
-        let contracts = active_contracts::get(active_contracts::Params {
-            ledger_host: ledger_host.clone(),
-            party: party.clone(),
-            access_token: login_response.access_token.clone(),
-            instrument_id: instrument_id.clone(),
-        })
-        .await
-        .unwrap();
-
-        assert!(!contracts.is_empty(), "Need at least one contract to split");
-
-        let input_holding_cids: Vec<String> = contracts
-            .iter()
-            .map(|c| c.created_event.contract_id.clone())
-            .collect();
-
-        let split_params = Params {
-            party,
-            amounts: vec![
-                common::decimal::DamlDecimal::parse("1.0").unwrap(),
-                common::decimal::DamlDecimal::parse("2.0").unwrap(),
-                common::decimal::DamlDecimal::parse("0.5").unwrap(),
-            ], // Split into 1.0, 2.0, 0.5, and change
-            instrument_id,
-            input_holding_cids,
-            ledger_host,
-            access_token: login_response.access_token,
-            registry_url: env::var("REGISTRY_URL").expect("REGISTRY_URL must be set"),
-            decentralized_party_id: decentralized_party,
-        };
-
-        let result = submit(split_params).await.unwrap();
-
-        assert!(!result.output_holding_cids.is_empty());
-        assert!(!result.change_holding_cids.is_empty());
-    }
-}
+// Live coverage for `submit` runs through `TokenClient::split` in
+// `crate::client`'s `integration_tests` module.
 
 #[cfg(test)]
 mod parser_tests {

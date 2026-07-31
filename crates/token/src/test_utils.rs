@@ -15,12 +15,12 @@
 //! The registry URL is pinned to devnet. Both parties share the Keycloak
 //! credentials and the participant.
 //!
-//! Every test tags its transfers with a fresh `test_uuid` reference, so
-//! ACS checks only see contracts from the current run and leftovers from
-//! a failed run are easy to find and cancel. Tests must never run in
-//! parallel: they mutate the same wallets, so each one holds
-//! [`SERIAL_LOCK`] for its whole body. A test that succeeds leaves both
-//! wallet balances exactly as it found them.
+//! Every test that creates transfer offers tags them with a fresh
+//! `test_uuid` reference, so ACS checks only see contracts from the
+//! current run and leftovers from a failed run are easy to find and
+//! cancel. Tests must never run in parallel: they mutate the same
+//! wallets, so each one holds [`SERIAL_LOCK`] for its whole body. A test
+//! that succeeds leaves both wallet balances exactly as it found them.
 
 use crate::client::{KeycloakConfig, TokenClient, TokenClientConfig};
 use common::decimal::DamlDecimal;

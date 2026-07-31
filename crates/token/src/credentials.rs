@@ -452,99 +452,85 @@ fn parse_accept_credential_offer_response(
 }
 
 #[cfg(test)]
-mod tests {
+// Each test holds SERIAL_LOCK across its awaits on purpose: the lock spans
+// the whole test body so tests never interleave, and `#[tokio::test]` runs
+// on a single-thread runtime, so a held std guard cannot deadlock it.
+#[allow(clippy::await_holding_lock)]
+mod integration_tests {
+    //! Live integration tests for the credential helpers. They take a party
+    //! and a bearer token directly, because [`crate::client::TokenClient`]
+    //! has no credential methods. Shared setup, the required env vars, and
+    //! the run command are documented in [`crate::test_utils`].
+
     use super::*;
-    use keycloak::login::{PasswordParams, password, password_url};
-    use std::env;
+    use crate::test_utils::{IntegrationTestState, SERIAL_LOCK};
 
     #[tokio::test]
-    #[ignore = "live test: requires env vars and network"]
-    async fn test_list_credentials() {
-        dotenvy::dotenv().ok();
-
-        let ledger_host = env::var("LEDGER_HOST").expect("LEDGER_HOST must be set");
-        let party_id = env::var("PARTY_ID").expect("PARTY_ID must be set");
-
-        let params = PasswordParams {
-            client_id: env::var("KEYCLOAK_CLIENT_ID").expect("KEYCLOAK_CLIENT_ID must be set"),
-            username: env::var("KEYCLOAK_USERNAME").expect("KEYCLOAK_USERNAME must be set"),
-            password: env::var("KEYCLOAK_PASSWORD").expect("KEYCLOAK_PASSWORD must be set"),
-            url: password_url(
-                &env::var("KEYCLOAK_HOST").expect("KEYCLOAK_HOST must be set"),
-                &env::var("KEYCLOAK_REALM").expect("KEYCLOAK_REALM must be set"),
-            ),
-        };
-        let login_response = password(params).await.unwrap();
+    #[ignore = "integration test: requires live devnet and env vars"]
+    async fn integration_list_credentials() {
+        let _guard = SERIAL_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let state = IntegrationTestState::from_env();
+        let access_token = state.access_token().await;
 
         let credentials = list_credentials(ListCredentialsParams {
-            ledger_host,
-            party: party_id,
-            access_token: login_response.access_token,
+            ledger_host: state.ledger_host.clone(),
+            party: state.party_1.clone(),
+            access_token,
         })
         .await
-        .expect("Failed to list credentials");
+        .expect("list_credentials failed");
 
-        log::debug!("Found {} credentials", credentials.len());
+        assert!(
+            credentials.iter().all(|c| c.holder == state.party_1),
+            "every returned credential should have party 1 as its holder"
+        );
     }
 
     #[tokio::test]
-    #[ignore = "live test: requires env vars and network"]
-    async fn test_list_credential_offers() {
-        dotenvy::dotenv().ok();
+    #[ignore = "integration test: requires live devnet and env vars"]
+    async fn integration_list_credential_offers() {
+        let _guard = SERIAL_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let state = IntegrationTestState::from_env();
+        let access_token = state.access_token().await;
 
-        let ledger_host = env::var("LEDGER_HOST").expect("LEDGER_HOST must be set");
-        let party_id = env::var("PARTY_ID").expect("PARTY_ID must be set");
-
-        let params = PasswordParams {
-            client_id: env::var("KEYCLOAK_CLIENT_ID").expect("KEYCLOAK_CLIENT_ID must be set"),
-            username: env::var("KEYCLOAK_USERNAME").expect("KEYCLOAK_USERNAME must be set"),
-            password: env::var("KEYCLOAK_PASSWORD").expect("KEYCLOAK_PASSWORD must be set"),
-            url: password_url(
-                &env::var("KEYCLOAK_HOST").expect("KEYCLOAK_HOST must be set"),
-                &env::var("KEYCLOAK_REALM").expect("KEYCLOAK_REALM must be set"),
-            ),
-        };
-        let login_response = password(params).await.unwrap();
-
+        // Party 1 usually has no pending offers; the test checks that the
+        // call succeeds and that the holder filter holds for anything it
+        // does return.
         let offers = list_credential_offers(ListCredentialOffersParams {
-            ledger_host,
-            party: party_id,
-            access_token: login_response.access_token,
+            ledger_host: state.ledger_host.clone(),
+            party: state.party_1.clone(),
+            access_token,
         })
         .await
-        .expect("Failed to list credential offers");
+        .expect("list_credential_offers failed");
 
-        log::debug!("Found {} credential offers", offers.len());
+        assert!(
+            offers.iter().all(|o| o.holder == state.party_1),
+            "every returned offer should have party 1 as its holder"
+        );
     }
 
     #[tokio::test]
-    #[ignore = "live test: requires env vars and network"]
-    async fn test_find_user_service() {
-        dotenvy::dotenv().ok();
+    #[ignore = "integration test: requires live devnet and env vars"]
+    async fn integration_find_user_service() {
+        let _guard = SERIAL_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let state = IntegrationTestState::from_env();
+        let access_token = state.access_token().await;
 
-        let ledger_host = env::var("LEDGER_HOST").expect("LEDGER_HOST must be set");
-        let party_id = env::var("PARTY_ID").expect("PARTY_ID must be set");
-
-        let params = PasswordParams {
-            client_id: env::var("KEYCLOAK_CLIENT_ID").expect("KEYCLOAK_CLIENT_ID must be set"),
-            username: env::var("KEYCLOAK_USERNAME").expect("KEYCLOAK_USERNAME must be set"),
-            password: env::var("KEYCLOAK_PASSWORD").expect("KEYCLOAK_PASSWORD must be set"),
-            url: password_url(
-                &env::var("KEYCLOAK_HOST").expect("KEYCLOAK_HOST must be set"),
-                &env::var("KEYCLOAK_REALM").expect("KEYCLOAK_REALM must be set"),
-            ),
-        };
-        let login_response = password(params).await.unwrap();
-
+        // Party 1 is onboarded to the utility, so it has a UserService
+        // contract.
         let user_service = find_user_service(FindUserServiceParams {
-            ledger_host,
-            party: party_id.clone(),
-            access_token: login_response.access_token,
+            ledger_host: state.ledger_host.clone(),
+            party: state.party_1.clone(),
+            access_token,
         })
         .await
-        .expect("Failed to find UserService");
+        .expect("find_user_service failed");
 
-        assert_eq!(user_service.user, party_id);
+        assert_eq!(
+            user_service.user, state.party_1,
+            "the UserService contract should belong to party 1"
+        );
         assert!(!user_service.contract_id.is_empty());
         assert!(!user_service.operator.is_empty());
     }

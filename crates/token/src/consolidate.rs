@@ -388,79 +388,8 @@ pub async fn check_and_consolidate(
     })
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use keycloak::login::{PasswordParams, password, password_url};
-    use std::env;
-
-    #[tokio::test]
-    #[ignore = "live test: requires env vars and network"]
-    async fn test_get_utxo_count() {
-        dotenvy::dotenv().ok();
-
-        let params = PasswordParams {
-            client_id: env::var("KEYCLOAK_CLIENT_ID").expect("KEYCLOAK_CLIENT_ID must be set"),
-            username: env::var("KEYCLOAK_USERNAME").expect("KEYCLOAK_USERNAME must be set"),
-            password: env::var("KEYCLOAK_PASSWORD").expect("KEYCLOAK_PASSWORD must be set"),
-            url: password_url(
-                &env::var("KEYCLOAK_HOST").expect("KEYCLOAK_HOST must be set"),
-                &env::var("KEYCLOAK_REALM").expect("KEYCLOAK_REALM must be set"),
-            ),
-        };
-        let login_response = password(params).await.unwrap();
-
-        let count_params = GetUtxoCountParams {
-            party: env::var("PARTY_ID").expect("PARTY_ID must be set"),
-            instrument_id: common::transfer::InstrumentId {
-                admin: env::var("DECENTRALIZED_PARTY_ID")
-                    .expect("DECENTRALIZED_PARTY_ID must be set"),
-                id: env::var("INSTRUMENT_ID").expect("INSTRUMENT_ID must be set"),
-            },
-            ledger_host: env::var("LEDGER_HOST").expect("LEDGER_HOST must be set"),
-            access_token: login_response.access_token,
-        };
-
-        let count = get_utxo_count(count_params).await.unwrap();
-        // Count is usize, so it's always >= 0
-        assert!(count < 1000); // Sanity check for reasonable count
-    }
-
-    #[tokio::test]
-    #[ignore = "live test: requires env vars and network"]
-    async fn test_check_and_consolidate() {
-        dotenvy::dotenv().ok();
-
-        let params = PasswordParams {
-            client_id: env::var("KEYCLOAK_CLIENT_ID").expect("KEYCLOAK_CLIENT_ID must be set"),
-            username: env::var("KEYCLOAK_USERNAME").expect("KEYCLOAK_USERNAME must be set"),
-            password: env::var("KEYCLOAK_PASSWORD").expect("KEYCLOAK_PASSWORD must be set"),
-            url: password_url(
-                &env::var("KEYCLOAK_HOST").expect("KEYCLOAK_HOST must be set"),
-                &env::var("KEYCLOAK_REALM").expect("KEYCLOAK_REALM must be set"),
-            ),
-        };
-        let login_response = password(params).await.unwrap();
-
-        let consolidate_params = CheckConsolidateParams {
-            party: env::var("PARTY_ID").expect("PARTY_ID must be set"),
-            instrument_id: common::transfer::InstrumentId {
-                admin: env::var("DECENTRALIZED_PARTY_ID")
-                    .expect("DECENTRALIZED_PARTY_ID must be set"),
-                id: env::var("INSTRUMENT_ID").expect("INSTRUMENT_ID must be set"),
-            },
-            threshold: 10, // Canton's soft limit
-            ledger_host: env::var("LEDGER_HOST").expect("LEDGER_HOST must be set"),
-            access_token: login_response.access_token,
-            registry_url: env::var("REGISTRY_URL").expect("REGISTRY_URL must be set"),
-            decentralized_party_id: env::var("DECENTRALIZED_PARTY_ID")
-                .expect("DECENTRALIZED_PARTY_ID must be set"),
-        };
-
-        let result = check_and_consolidate(consolidate_params).await.unwrap();
-        assert!(result.utxos_before < 10000); // Sanity check
-    }
-}
+// Live coverage for `get_utxo_count` and `check_and_consolidate` runs
+// through `TokenClient` in `crate::client`'s `integration_tests` module.
 
 #[cfg(test)]
 mod parser_tests {

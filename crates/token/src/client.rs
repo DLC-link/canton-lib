@@ -525,4 +525,125 @@ mod integration_tests {
             "party 1 balance should be restored after cancelling all offers"
         );
     }
+
+    #[tokio::test]
+    #[ignore = "integration test: requires live devnet and env vars"]
+    async fn integration_utxo_count() {
+        let _guard = SERIAL_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let state = IntegrationTestState::from_env();
+        let mut p1 = state.client_for(&state.party_1).await;
+
+        let count = p1.utxo_count().await.expect("utxo_count failed");
+        let holdings = p1.holdings().await.expect("holdings failed");
+        assert_eq!(
+            count,
+            holdings.len(),
+            "utxo_count should match the number of unlocked holdings"
+        );
+        assert!(
+            count >= 1,
+            "party 1 should hold at least one UTXO to fund the other tests"
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "integration test: requires live devnet and env vars"]
+    async fn integration_check_and_consolidate() {
+        let _guard = SERIAL_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let state = IntegrationTestState::from_env();
+        let mut p1 = state.client_for(&state.party_1).await;
+        let party_1_balance = balance(&mut p1).await;
+
+        // Below the threshold nothing happens.
+        let count = p1.utxo_count().await.expect("utxo_count failed");
+        let result = p1
+            .check_and_consolidate(count + 1)
+            .await
+            .expect("check_and_consolidate below threshold failed");
+        assert!(
+            !result.consolidated,
+            "should not consolidate below the threshold"
+        );
+        assert_eq!(result.utxos_before, count);
+        assert_eq!(result.utxos_after, count);
+
+        // Make sure there are at least two UTXOs, then consolidate at the
+        // threshold.
+        if count < 2 {
+            assert!(
+                party_1_balance > dec("1"),
+                "party 1 needs more than 1 to split off a second UTXO"
+            );
+            p1.split(vec![dec("1")]).await.expect("setup split failed");
+        }
+        let result = p1
+            .check_and_consolidate(2)
+            .await
+            .expect("check_and_consolidate at threshold failed");
+        assert!(result.consolidated, "should consolidate at the threshold");
+        assert!(result.utxos_before >= 2);
+        assert_eq!(
+            result.utxos_after, 1,
+            "all holdings should merge into one UTXO"
+        );
+        assert_eq!(
+            p1.utxo_count().await.expect("utxo_count failed"),
+            1,
+            "the ACS should hold a single UTXO after consolidation"
+        );
+        assert_eq!(
+            balance(&mut p1).await,
+            party_1_balance,
+            "consolidation should preserve the balance"
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "integration test: requires live devnet and env vars"]
+    async fn integration_split() {
+        let _guard = SERIAL_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let state = IntegrationTestState::from_env();
+        let mut p1 = state.client_for(&state.party_1).await;
+
+        let party_1_balance = balance(&mut p1).await;
+        let amounts = vec![dec("1"), dec("2"), dec("0.5")];
+        assert!(
+            party_1_balance > dec("3.5"),
+            "party 1 needs more than 3.5 to split with change"
+        );
+
+        let result = p1.split(amounts.clone()).await.expect("split failed");
+        assert_eq!(
+            result.output_holding_cids.len(),
+            amounts.len(),
+            "split should produce one output UTXO per requested amount"
+        );
+        assert!(
+            !result.change_holding_cids.is_empty(),
+            "split should leave change"
+        );
+
+        // Each output CID is a live holding of exactly the requested amount;
+        // the outputs come back in the order of the requested amounts.
+        let holdings = p1.holdings().await.expect("holdings failed");
+        for (cid, amount) in result.output_holding_cids.iter().zip(&amounts) {
+            let holding = holdings
+                .iter()
+                .find(|h| &h.created_event.contract_id == cid)
+                .expect("split output holding not found in the ACS");
+            assert_eq!(
+                utils::extract_amount(holding),
+                Some(*amount),
+                "split output holding should carry the requested amount"
+            );
+        }
+        assert_eq!(
+            balance(&mut p1).await,
+            party_1_balance,
+            "split should preserve the balance"
+        );
+
+        // Merge the pieces back so the wallet keeps its shape for other tests.
+        p1.consolidate().await.expect("cleanup consolidate failed");
+    }
 }
