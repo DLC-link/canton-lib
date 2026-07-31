@@ -54,43 +54,41 @@ pub async fn get(params: Params) -> Result<AmuletRules, String> {
 }
 
 #[cfg(test)]
-mod tests {
+mod integration_tests {
+    //! Live integration test for the amulet-rules query on the wallet API.
+    //! It authenticates with the client-credentials flow and needs these
+    //! env vars (a `.env` file is loaded when present): `WALLET_API_HOST`,
+    //! `KEYCLOAK_URL` (full token endpoint URL), `AMULET_CLIENT_ID`,
+    //! `AMULET_CLIENT_SECRET`.
+
     use super::*;
-    use keycloak::login::{ClientCredentialsParams, client_credentials, token_url};
+    use keycloak::login::{ClientCredentialsParams, client_credentials};
     use std::env;
-    use tokio;
+
+    fn var(name: &str) -> String {
+        env::var(name).unwrap_or_else(|_| panic!("{name} must be set for integration tests"))
+    }
 
     #[tokio::test]
-    #[ignore = "live test: requires env vars and network"]
-    async fn test_get_amulet_rules_integration() {
+    #[ignore = "integration test: requires live devnet and env vars"]
+    async fn integration_get_amulet_rules() {
         dotenvy::dotenv().ok();
 
-        let params = ClientCredentialsParams {
-            client_id: env::var("KEYCLOAK_CLIENT_ID").expect("KEYCLOAK_CLIENT_ID must be set"),
-            client_secret: env::var("LIB_TEST_AMULET_CLIENT_SECRET")
-                .expect("LIB_TEST_AMULET_CLIENT_SECRET must be set"),
-            url: token_url(
-                &format!(
-                    "{}/auth",
-                    env::var("KEYCLOAK_HOST").expect("KEYCLOAK_HOST must be set")
-                ),
-                &env::var("KEYCLOAK_REALM").expect("KEYCLOAK_REALM must be set"),
-            ),
-        };
-        let result = client_credentials(params).await.unwrap();
-
-        // Call the function
-        let result = get(Params {
-            token: result.access_token,
-            wallet_api_host: env::var("WALLET_API_HOST").expect("WALLET_API_HOST must be set"),
+        let login = client_credentials(ClientCredentialsParams {
+            client_id: var("AMULET_CLIENT_ID"),
+            client_secret: var("AMULET_CLIENT_SECRET"),
+            url: var("KEYCLOAK_URL"),
         })
-        .await;
+        .await
+        .expect("keycloak client-credentials login failed");
 
-        match result {
-            Ok(rules) => {
-                assert!(!rules.contract.contract_id.is_empty());
-            }
-            Err(e) => panic!("Failed to get amulet rules: {:?}", e),
-        }
+        let rules = get(Params {
+            token: login.access_token,
+            wallet_api_host: var("WALLET_API_HOST"),
+        })
+        .await
+        .expect("failed to get amulet rules");
+
+        assert!(!rules.contract.contract_id.is_empty());
     }
 }
