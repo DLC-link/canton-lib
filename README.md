@@ -12,7 +12,8 @@ A Rust library for interacting with the Canton blockchain.
 4. [Usage Examples](#usage-examples)
 5. [API Reference](#api-reference)
 6. [Direct Canton API Usage](#direct-canton-api-usage-reference)
-7. [Contributing](#contributing)
+7. [Testing](#testing)
+8. [Contributing](#contributing)
 
 ---
 
@@ -264,6 +265,50 @@ curl -X POST $LEDGER_HOST/v2/commands/submit-and-wait-for-transaction \
 ## Changelog
 
 See [CHANGELOG.md](CHANGELOG.md) for a detailed list of changes, including breaking changes and migration guides.
+
+---
+
+## Testing
+
+The workspace has two separate test suites.
+
+### Unit tests
+
+```bash
+cargo test --workspace
+```
+
+Unit tests need no network access and no environment variables. Tests that
+need a live ledger are marked `#[ignore]`, so this suite always runs green.
+
+### Integration tests
+
+```bash
+cargo test --workspace -- --ignored --test-threads=1 integration_
+```
+
+Integration tests exercise `TokenClient` against a live participant and the
+devnet registry. They live in `crates/token/src/client.rs`. The
+`--test-threads=1` flag keeps them sequential; the tests also serialize
+themselves through a lock, so they never mutate the two test wallets
+concurrently. Each successful test restores the wallet balances it touched.
+
+Set these environment variables (a `.env` file is loaded when present):
+
+| Variable | Meaning |
+|----------|---------|
+| `PARTY_ID_1` | First test party |
+| `PARTY_ID_2` | Second test party |
+| `DECENTRALIZED_PARTY_ID` | Registrar (admin) of the instrument |
+| `INSTRUMENT_ID` | Instrument symbol only; the admin is `DECENTRALIZED_PARTY_ID` |
+| `LEDGER_HOST` | Ledger API host, shared by both parties |
+| `KEYCLOAK_CLIENT_ID` | Keycloak client id, shared by both parties |
+| `KEYCLOAK_USER` | Keycloak username, shared by both parties |
+| `KEYCLOAK_PASSWORD` | Keycloak password, shared by both parties |
+| `KEYCLOAK_URL` | Full Keycloak token endpoint URL |
+
+The registry URL is pinned to the devnet registry
+(`registry::consts::DEVNET_REGISTRY_URL`).
 
 ---
 

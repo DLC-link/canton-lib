@@ -333,3 +333,342 @@ impl TokenClient {
         .await
     }
 }
+
+#[cfg(test)]
+// Each test holds SERIAL_LOCK across its awaits on purpose: the lock spans
+// the whole test body so tests never interleave, and `#[tokio::test]` runs
+// on a single-thread runtime, so a held std guard cannot deadlock it.
+#[allow(clippy::await_holding_lock)]
+mod integration_tests {
+    //! Live integration tests for [`TokenClient`], the crate's outermost
+    //! boundary. They run against a real participant and the devnet
+    //! registry, so they are `#[ignore]`d and excluded from the unit suite.
+    //!
+    //! Run them with:
+    //!
+    //! ```text
+    //! cargo test --workspace -- --ignored --test-threads=1 integration_
+    //! ```
+    //!
+    //! Required env vars (a `.env` file is loaded when present):
+    //! `PARTY_ID_1`, `PARTY_ID_2`, `DECENTRALIZED_PARTY_ID`, `INSTRUMENT_ID`,
+    //! `LEDGER_HOST`, `KEYCLOAK_CLIENT_ID`, `KEYCLOAK_USER`,
+    //! `KEYCLOAK_PASSWORD`, `KEYCLOAK_URL` (full token endpoint URL).
+    //!
+    //! The registry URL is pinned to devnet. Both parties share the Keycloak
+    //! credentials and the participant.
+    //!
+    //! Every test tags its transfers with a fresh `test_uuid` reference, so
+    //! ACS checks only see contracts from the current run and leftovers from
+    //! a failed run are easy to find and cancel. Tests must never run in
+    //! parallel: they mutate the same wallets, so each one holds
+    //! [`SERIAL_LOCK`] for its whole body. A test that succeeds leaves both
+    //! wallet balances exactly as it found them.
+
+    use super::*;
+    use crate::distribute::Recipient;
+    use ledger::models::JsActiveContract;
+    use std::env;
+    use std::sync::Mutex;
+
+    static SERIAL_LOCK: Mutex<()> = Mutex::new(());
+
+    const REFERENCE_META_KEY: &str = "splice.lfdecentralizedtrust.org/reference";
+
+    /// All configuration the integration tests need: the env-provided
+    /// values plus the hardcoded devnet registry URL.
+    struct IntegrationTestState {
+        party_1: String,
+        party_2: String,
+        instrument: InstrumentId,
+        ledger_host: String,
+        registry_url: String,
+        keycloak: KeycloakConfig,
+    }
+
+    impl IntegrationTestState {
+        fn from_env() -> Self {
+            dotenvy::dotenv().ok();
+            let var = |name: &str| {
+                env::var(name)
+                    .unwrap_or_else(|_| panic!("{name} must be set for integration tests"))
+            };
+            Self {
+                party_1: var("PARTY_ID_1"),
+                party_2: var("PARTY_ID_2"),
+                instrument: InstrumentId {
+                    admin: var("DECENTRALIZED_PARTY_ID"),
+                    id: var("INSTRUMENT_ID"),
+                },
+                ledger_host: var("LEDGER_HOST"),
+                registry_url: registry::consts::DEVNET_REGISTRY_URL.to_string(),
+                keycloak: KeycloakConfig {
+                    client_id: var("KEYCLOAK_CLIENT_ID"),
+                    username: var("KEYCLOAK_USER"),
+                    password: var("KEYCLOAK_PASSWORD"),
+                    url: var("KEYCLOAK_URL"),
+                },
+            }
+        }
+
+        async fn client_for(&self, party: &str) -> TokenClient {
+            TokenClient::connect(TokenClientConfig {
+                ledger_host: self.ledger_host.clone(),
+                registry_url: self.registry_url.clone(),
+                instrument: self.instrument.clone(),
+                party: party.to_string(),
+                keycloak: self.keycloak.clone(),
+            })
+            .await
+            .expect("failed to connect TokenClient")
+        }
+    }
+
+    fn dec(s: &str) -> DamlDecimal {
+        DamlDecimal::parse(s).expect("invalid decimal literal")
+    }
+
+    fn offer_reference(offer: &JsActiveContract) -> Option<&str> {
+        offer
+            .created_event
+            .create_argument
+            .as_ref()?
+            .get("transfer")?
+            .get("meta")?
+            .get("values")?
+            .get(REFERENCE_META_KEY)?
+            .as_str()
+    }
+
+    fn offers_with_reference(
+        offers: Vec<JsActiveContract>,
+        reference: &str,
+    ) -> Vec<JsActiveContract> {
+        offers
+            .into_iter()
+            .filter(|offer| offer_reference(offer) == Some(reference))
+            .collect()
+    }
+
+    fn offer_amount(offer: &JsActiveContract) -> DamlDecimal {
+        offer
+            .created_event
+            .create_argument
+            .as_ref()
+            .and_then(|arg| arg.get("transfer")?.get("amount")?.as_str())
+            .and_then(|s| DamlDecimal::parse(s).ok())
+            .expect("offer has no parsable transfer.amount")
+    }
+
+    fn offer_cid(offer: &JsActiveContract) -> String {
+        offer.created_event.contract_id.clone()
+    }
+
+    /// The reference `distribute()` writes on-ledger:
+    /// `base64("{base}-{sender}-{receiver}")`. The raw base never appears.
+    fn distribute_reference(base: &str, sender: &str, receiver: &str) -> String {
+        use base64::{Engine as _, engine::general_purpose};
+        general_purpose::STANDARD.encode(format!("{base}-{sender}-{receiver}").as_bytes())
+    }
+
+    async fn outgoing_with_reference(
+        client: &mut TokenClient,
+        reference: &str,
+    ) -> Vec<JsActiveContract> {
+        let offers = client
+            .outgoing_offers()
+            .await
+            .expect("outgoing_offers failed");
+        offers_with_reference(offers, reference)
+    }
+
+    async fn incoming_with_reference(
+        client: &mut TokenClient,
+        reference: &str,
+    ) -> Vec<JsActiveContract> {
+        let offers = client
+            .incoming_offers()
+            .await
+            .expect("incoming_offers failed");
+        offers_with_reference(offers, reference)
+    }
+
+    async fn balance(client: &mut TokenClient) -> DamlDecimal {
+        client.balance().await.expect("balance failed")
+    }
+
+    #[tokio::test]
+    #[ignore = "integration test: requires live devnet and env vars"]
+    async fn integration_transfer_offer_accept() {
+        let _guard = SERIAL_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let state = IntegrationTestState::from_env();
+        let test_uuid = uuid::Uuid::new_v4().to_string();
+        let mut p1 = state.client_for(&state.party_1).await;
+        let mut p2 = state.client_for(&state.party_2).await;
+
+        // Party 1 offers 1 to party 2.
+        let party_1_balance = balance(&mut p1).await;
+        p1.send(
+            state.party_2.clone(),
+            dec("1"),
+            Some(test_uuid.clone()),
+            None,
+        )
+        .await
+        .expect("party 1 send failed");
+        let outgoing = outgoing_with_reference(&mut p1, &test_uuid).await;
+        assert_eq!(outgoing.len(), 1, "party 1 should have one outgoing offer");
+
+        // Party 2 accepts it.
+        let incoming = incoming_with_reference(&mut p2, &test_uuid).await;
+        assert_eq!(incoming.len(), 1, "party 2 should have one incoming offer");
+        let party_2_balance = balance(&mut p2).await;
+        p2.accept(offer_cid(&incoming[0]))
+            .await
+            .expect("party 2 accept failed");
+        assert_eq!(
+            balance(&mut p2).await,
+            party_2_balance + dec("1"),
+            "party 2 balance should grow by 1 after accepting"
+        );
+
+        // Party 2 offers 1 back to party 1.
+        p2.send(
+            state.party_1.clone(),
+            dec("1"),
+            Some(test_uuid.clone()),
+            None,
+        )
+        .await
+        .expect("party 2 send failed");
+        let outgoing = outgoing_with_reference(&mut p2, &test_uuid).await;
+        assert_eq!(outgoing.len(), 1, "party 2 should have one outgoing offer");
+
+        // Party 1 accepts it, restoring both balances.
+        assert_eq!(
+            balance(&mut p1).await,
+            party_1_balance - dec("1"),
+            "party 1 balance should be down 1 while its transfer is pending"
+        );
+        let incoming = incoming_with_reference(&mut p1, &test_uuid).await;
+        assert_eq!(incoming.len(), 1, "party 1 should have one incoming offer");
+        p1.accept(offer_cid(&incoming[0]))
+            .await
+            .expect("party 1 accept failed");
+        assert_eq!(
+            balance(&mut p1).await,
+            party_1_balance,
+            "party 1 balance should be restored after the round trip"
+        );
+        let incoming = incoming_with_reference(&mut p1, &test_uuid).await;
+        assert!(incoming.is_empty(), "no incoming offers should remain");
+    }
+
+    #[tokio::test]
+    #[ignore = "integration test: requires live devnet and env vars"]
+    async fn integration_transfer_offer_cancel_reject() {
+        let _guard = SERIAL_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let state = IntegrationTestState::from_env();
+        let test_uuid = uuid::Uuid::new_v4().to_string();
+        let mut p1 = state.client_for(&state.party_1).await;
+        let mut p2 = state.client_for(&state.party_2).await;
+
+        // Party 1 offers 1.24, then cancels its own offer.
+        let party_1_balance = balance(&mut p1).await;
+        p1.send(
+            state.party_2.clone(),
+            dec("1.24"),
+            Some(test_uuid.clone()),
+            None,
+        )
+        .await
+        .expect("party 1 send of 1.24 failed");
+        let outgoing = outgoing_with_reference(&mut p1, &test_uuid).await;
+        assert_eq!(outgoing.len(), 1, "party 1 should have one outgoing offer");
+        p1.cancel_offer(offer_cid(&outgoing[0]))
+            .await
+            .expect("party 1 cancel failed");
+        let outgoing = outgoing_with_reference(&mut p1, &test_uuid).await;
+        assert!(outgoing.is_empty(), "cancelled offer should leave the ACS");
+        assert_eq!(
+            balance(&mut p1).await,
+            party_1_balance,
+            "party 1 balance should be restored after cancel"
+        );
+
+        // Party 1 offers 1.25; party 2 rejects it.
+        p1.send(
+            state.party_2.clone(),
+            dec("1.25"),
+            Some(test_uuid.clone()),
+            None,
+        )
+        .await
+        .expect("party 1 send of 1.25 failed");
+        let outgoing = outgoing_with_reference(&mut p1, &test_uuid).await;
+        assert_eq!(outgoing.len(), 1, "party 1 should have one outgoing offer");
+
+        let party_2_balance = balance(&mut p2).await;
+        let incoming = incoming_with_reference(&mut p2, &test_uuid).await;
+        assert_eq!(incoming.len(), 1, "party 2 should have one incoming offer");
+        p2.reject(offer_cid(&incoming[0]))
+            .await
+            .expect("party 2 reject failed");
+        let incoming = incoming_with_reference(&mut p2, &test_uuid).await;
+        assert!(incoming.is_empty(), "rejected offer should leave the ACS");
+        assert_eq!(
+            balance(&mut p2).await,
+            party_2_balance,
+            "party 2 balance should be unchanged after reject"
+        );
+
+        let outgoing = outgoing_with_reference(&mut p1, &test_uuid).await;
+        assert!(outgoing.is_empty(), "no outgoing offers should remain");
+    }
+
+    #[tokio::test]
+    #[ignore = "integration test: requires live devnet and env vars"]
+    async fn integration_distribute() {
+        let _guard = SERIAL_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let state = IntegrationTestState::from_env();
+        let test_uuid = uuid::Uuid::new_v4().to_string();
+        let mut p1 = state.client_for(&state.party_1).await;
+
+        let party_1_balance = balance(&mut p1).await;
+        let recipients = ["1", "2", "3"]
+            .into_iter()
+            .map(|amount| Recipient {
+                receiver: state.party_2.clone(),
+                amount: dec(amount),
+            })
+            .collect();
+        p1.distribute(recipients, Some(test_uuid.clone()))
+            .await
+            .expect("distribute failed");
+
+        // All three offers share one encoded reference: the sender and the
+        // receiver are the same for each of them.
+        let reference = distribute_reference(&test_uuid, &state.party_1, &state.party_2);
+        let outgoing = outgoing_with_reference(&mut p1, &reference).await;
+        let mut amounts: Vec<DamlDecimal> = outgoing.iter().map(offer_amount).collect();
+        amounts.sort();
+        assert_eq!(
+            amounts,
+            vec![dec("1"), dec("2"), dec("3")],
+            "distribute should create offers of exactly 1, 2 and 3"
+        );
+
+        for offer in &outgoing {
+            p1.cancel_offer(offer_cid(offer))
+                .await
+                .expect("cancel of distribute offer failed");
+        }
+        let outgoing = outgoing_with_reference(&mut p1, &reference).await;
+        assert!(outgoing.is_empty(), "cancelled offers should leave the ACS");
+        assert_eq!(
+            balance(&mut p1).await,
+            party_1_balance,
+            "party 1 balance should be restored after cancelling all offers"
+        );
+    }
+}
