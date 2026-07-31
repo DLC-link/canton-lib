@@ -9,7 +9,7 @@
 //!
 //! Required env vars (a `.env` file is loaded when present):
 //! `PARTY_ID_1`, `PARTY_ID_2`, `DECENTRALIZED_PARTY_ID`, `INSTRUMENT_ID`,
-//! `LEDGER_HOST`, `KEYCLOAK_CLIENT_ID`, `KEYCLOAK_USER`,
+//! `LEDGER_HOST`, `KEYCLOAK_CLIENT_ID`, `KEYCLOAK_USERNAME`,
 //! `KEYCLOAK_PASSWORD`, `KEYCLOAK_URL` (full token endpoint URL).
 //!
 //! The registry URL is pinned to devnet. Both parties share the Keycloak
@@ -61,7 +61,7 @@ impl IntegrationTestState {
             registry_url: registry::consts::DEVNET_REGISTRY_URL.to_string(),
             keycloak: KeycloakConfig {
                 client_id: var("KEYCLOAK_CLIENT_ID"),
-                username: var("KEYCLOAK_USER"),
+                username: var("KEYCLOAK_USERNAME"),
                 password: var("KEYCLOAK_PASSWORD"),
                 url: var("KEYCLOAK_URL"),
             },

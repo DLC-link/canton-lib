@@ -287,13 +287,8 @@ need a live ledger are marked `#[ignore]`, so this suite always runs green.
 cargo test --workspace -- --ignored --test-threads=1 integration_
 ```
 
-Integration tests exercise `TokenClient` against a live participant and the
-devnet registry. They live in `crates/token/src/client.rs`. The
-`--test-threads=1` flag keeps them sequential; the tests also serialize
-themselves through a lock, so they never mutate the two test wallets
-concurrently. Each successful test restores the wallet balances it touched.
-
-Set these environment variables (a `.env` file is loaded when present):
+Set these environment variables (a `.env` file is loaded when present;
+`.env.example` is a template):
 
 | Variable | Meaning |
 |----------|---------|
@@ -302,13 +297,15 @@ Set these environment variables (a `.env` file is loaded when present):
 | `DECENTRALIZED_PARTY_ID` | Registrar (admin) of the instrument |
 | `INSTRUMENT_ID` | Instrument symbol only; the admin is `DECENTRALIZED_PARTY_ID` |
 | `LEDGER_HOST` | Ledger API host, shared by both parties |
-| `KEYCLOAK_CLIENT_ID` | Keycloak client id, shared by both parties |
-| `KEYCLOAK_USER` | Keycloak username, shared by both parties |
+| `KEYCLOAK_URL` | Full Keycloak token endpoint URL, shared by both auth flows |
+| `KEYCLOAK_CLIENT_ID` | Keycloak client id for the password flow |
+| `KEYCLOAK_USERNAME` | Keycloak username, shared by both parties |
 | `KEYCLOAK_PASSWORD` | Keycloak password, shared by both parties |
-| `KEYCLOAK_URL` | Full Keycloak token endpoint URL |
-
-The registry URL is pinned to the devnet registry
-(`registry::consts::DEVNET_REGISTRY_URL`).
+| `KEYCLOAK_CLIENT_AUTH_CLIENT_ID` | Client id for the client-credentials flow (ledger tests) |
+| `KEYCLOAK_CLIENT_AUTH_CLIENT_SECRET` | Secret for the client-credentials flow |
+| `WALLET_API_HOST` | Wallet (validator) API base URL (wallet tests) |
+| `AMULET_CLIENT_ID` | Client-credentials client id for the wallet API |
+| `AMULET_CLIENT_SECRET` | Secret for the wallet API client |
 
 ---
 

@@ -51,7 +51,7 @@ mod integration_tests {
     //! Live integration test for the registry transfer-factory endpoint.
     //! It needs these env vars (a `.env` file is loaded when present):
     //! `LEDGER_HOST`, `PARTY_ID_1`, `PARTY_ID_2`, `DECENTRALIZED_PARTY_ID`,
-    //! `INSTRUMENT_ID`, `KEYCLOAK_CLIENT_ID`, `KEYCLOAK_USER`,
+    //! `INSTRUMENT_ID`, `KEYCLOAK_CLIENT_ID`, `KEYCLOAK_USERNAME`,
     //! `KEYCLOAK_PASSWORD`, `KEYCLOAK_URL` (full token endpoint URL).
 
     use super::*;
@@ -76,7 +76,7 @@ mod integration_tests {
 
         let login = password(PasswordParams {
             client_id: var("KEYCLOAK_CLIENT_ID"),
-            username: var("KEYCLOAK_USER"),
+            username: var("KEYCLOAK_USERNAME"),
             password: var("KEYCLOAK_PASSWORD"),
             url: var("KEYCLOAK_URL"),
         })

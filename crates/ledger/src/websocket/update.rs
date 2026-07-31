@@ -165,7 +165,7 @@ mod integration_tests {
         // The subscription never completes on its own: staying connected
         // and error-free until the timeout fires is the success case.
         let result = tokio::time::timeout(
-            Duration::from_secs(15),
+            Duration::from_secs(60),
             subscribe(
                 Params {
                     ledger_host,
