@@ -113,6 +113,7 @@ mod tests {
     use std::io::Write;
 
     #[tokio::test]
+    #[ignore = "live test: requires env vars and network"]
     async fn test_batch_from_csv() {
         dotenvy::dotenv().ok();
 

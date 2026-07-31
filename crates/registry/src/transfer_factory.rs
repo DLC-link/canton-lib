@@ -55,6 +55,7 @@ mod tests {
     use std::env;
     use std::ops::Add;
     #[tokio::test]
+    #[ignore = "live test: requires env vars and network"]
     async fn test_transfer_factory() {
         dotenvy::dotenv().ok();
 

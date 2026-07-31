@@ -131,6 +131,7 @@ mod tests {
     use tokio::time::Duration;
 
     #[tokio::test]
+    #[ignore = "live test: requires env vars and network"]
     async fn test_websocket_connection() {
         dotenvy::dotenv().ok();
 

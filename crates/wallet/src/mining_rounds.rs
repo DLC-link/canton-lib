@@ -265,6 +265,7 @@ mod tests {
     use std::env;
 
     #[tokio::test]
+    #[ignore = "live test: requires env vars and network"]
     async fn test_get_open_mining_rounds() {
         let params = ClientCredentialsParams {
             client_id: env::var("KEYCLOAK_CLIENT_ID").expect("KEYCLOAK_CLIENT_ID must be set"),

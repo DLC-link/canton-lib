@@ -395,6 +395,7 @@ mod tests {
     use std::env;
 
     #[tokio::test]
+    #[ignore = "live test: requires env vars and network"]
     async fn test_get_utxo_count() {
         dotenvy::dotenv().ok();
 
@@ -426,6 +427,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "live test: requires env vars and network"]
     async fn test_check_and_consolidate() {
         dotenvy::dotenv().ok();
 

@@ -46,6 +46,7 @@ mod tests {
     use std::env;
 
     #[tokio::test]
+    #[ignore = "live test: requires env vars and network"]
     async fn test_get_ledger_end() {
         dotenvy::dotenv().ok();
 

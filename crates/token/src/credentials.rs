@@ -458,6 +458,7 @@ mod tests {
     use std::env;
 
     #[tokio::test]
+    #[ignore = "live test: requires env vars and network"]
     async fn test_list_credentials() {
         dotenvy::dotenv().ok();
 
@@ -487,6 +488,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "live test: requires env vars and network"]
     async fn test_list_credential_offers() {
         dotenvy::dotenv().ok();
 
@@ -516,6 +518,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "live test: requires env vars and network"]
     async fn test_find_user_service() {
         dotenvy::dotenv().ok();
 

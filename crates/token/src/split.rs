@@ -212,6 +212,7 @@ mod tests {
     use std::env;
 
     #[tokio::test]
+    #[ignore = "live test: requires env vars and network"]
     async fn test_split() {
         // Load environment variables from .env file
         dotenvy::dotenv().ok();

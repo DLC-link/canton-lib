@@ -61,6 +61,7 @@ mod tests {
     use tokio;
 
     #[tokio::test]
+    #[ignore = "live test: requires env vars and network"]
     async fn test_get_amulet_rules_integration() {
         dotenvy::dotenv().ok();
 
