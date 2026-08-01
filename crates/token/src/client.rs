@@ -452,6 +452,76 @@ mod integration_tests {
 
     #[tokio::test]
     #[ignore = "integration test: requires live devnet and env vars"]
+    async fn integration_transfer_accept_all() {
+        let _guard = SERIAL_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let state = IntegrationTestState::from_env();
+        let test_uuid = uuid::Uuid::new_v4().to_string();
+        let mut p1 = state.client_for(&state.party_1).await;
+        let mut p2 = state.client_for(&state.party_2).await;
+
+        // The "all" calls below act on every pending offer, not only this
+        // test's, so cancel any leftovers from earlier failed runs first to
+        // make the counts and balance deltas exact.
+        p1.cancel_all_offers()
+            .await
+            .expect("setup cancel_all_offers failed");
+
+        // Party 1 offers 1 and 1.1 to party 2.
+        let party_1_balance = balance(&mut p1).await;
+        for amount in ["1", "1.1"] {
+            p1.send(SendParams {
+                receiver: state.party_2.clone(),
+                amount: dec(amount),
+                reference: Some(test_uuid.clone()),
+                execute_before: None,
+                input_holding_cids: None,
+            })
+            .await
+            .unwrap_or_else(|e| panic!("party 1 send of {amount} failed: {e}"));
+        }
+
+        // Party 2 accepts both in one call.
+        let party_2_balance = balance(&mut p2).await;
+        let incoming = incoming_with_reference(&mut p2, &test_uuid).await;
+        assert_eq!(incoming.len(), 2, "party 2 should have two incoming offers");
+        let result = p2.accept_all().await.expect("accept_all failed");
+        assert_eq!(result.failed_count, 0, "accept_all should fail no offer");
+        assert_eq!(
+            result.successful_count, 2,
+            "accept_all should accept exactly the two offers"
+        );
+        assert_eq!(
+            balance(&mut p2).await,
+            party_2_balance + dec("2.1"),
+            "party 2 balance should grow by 2.1 after accepting all"
+        );
+        let incoming = incoming_with_reference(&mut p2, &test_uuid).await;
+        assert!(incoming.is_empty(), "no incoming offers should remain");
+
+        // Party 2 offers 2.1 back; party 1 accepts, restoring both balances.
+        p2.send(SendParams {
+            receiver: state.party_1.clone(),
+            amount: dec("2.1"),
+            reference: Some(test_uuid.clone()),
+            execute_before: None,
+            input_holding_cids: None,
+        })
+        .await
+        .expect("party 2 send failed");
+        let incoming = incoming_with_reference(&mut p1, &test_uuid).await;
+        assert_eq!(incoming.len(), 1, "party 1 should have one incoming offer");
+        p1.accept(offer_cid(&incoming[0]))
+            .await
+            .expect("party 1 accept failed");
+        assert_eq!(
+            balance(&mut p1).await,
+            party_1_balance,
+            "party 1 balance should be restored after the round trip"
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "integration test: requires live devnet and env vars"]
     async fn integration_transfer_offer_cancel_reject() {
         let _guard = SERIAL_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let state = IntegrationTestState::from_env();
@@ -512,6 +582,59 @@ mod integration_tests {
 
         let outgoing = outgoing_with_reference(&mut p1, &test_uuid).await;
         assert!(outgoing.is_empty(), "no outgoing offers should remain");
+    }
+
+    #[tokio::test]
+    #[ignore = "integration test: requires live devnet and env vars"]
+    async fn integration_cancel_all() {
+        let _guard = SERIAL_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let state = IntegrationTestState::from_env();
+        let test_uuid = uuid::Uuid::new_v4().to_string();
+        let mut p1 = state.client_for(&state.party_1).await;
+
+        // cancel_all_offers acts on every pending offer, not only this
+        // test's, so cancel any leftovers from earlier failed runs first to
+        // make the counts and balance checks exact.
+        p1.cancel_all_offers()
+            .await
+            .expect("setup cancel_all_offers failed");
+
+        // Party 1 offers 1 and 1.1 to party 2.
+        let party_1_balance = balance(&mut p1).await;
+        for amount in ["1", "1.1"] {
+            p1.send(SendParams {
+                receiver: state.party_2.clone(),
+                amount: dec(amount),
+                reference: Some(test_uuid.clone()),
+                execute_before: None,
+                input_holding_cids: None,
+            })
+            .await
+            .unwrap_or_else(|e| panic!("party 1 send of {amount} failed: {e}"));
+        }
+        let outgoing = outgoing_with_reference(&mut p1, &test_uuid).await;
+        assert_eq!(outgoing.len(), 2, "party 1 should have two outgoing offers");
+
+        // Party 1 cancels both in one call.
+        let result = p1
+            .cancel_all_offers()
+            .await
+            .expect("cancel_all_offers failed");
+        assert_eq!(
+            result.failed_count, 0,
+            "cancel_all_offers should fail no offer"
+        );
+        assert_eq!(
+            result.successful_count, 2,
+            "cancel_all_offers should cancel exactly the two offers"
+        );
+        let outgoing = outgoing_with_reference(&mut p1, &test_uuid).await;
+        assert!(outgoing.is_empty(), "cancelled offers should leave the ACS");
+        assert_eq!(
+            balance(&mut p1).await,
+            party_1_balance,
+            "party 1 balance should be restored after cancelling all offers"
+        );
     }
 
     #[tokio::test]
