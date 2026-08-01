@@ -60,7 +60,10 @@ pub struct Submission {
     pub domain_id: Option<String>,
     #[serde(rename = "userId", skip_serializing_if = "Option::is_none")]
     pub user_id: Option<String>,
-    #[serde(rename = "deduplicationPeriod", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "deduplicationPeriod",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub deduplication_period: Option<DeduplicationPeriod>,
     #[serde(rename = "disclosedContracts")]
     pub disclosed_contracts: Vec<transfer::DisclosedContract>,

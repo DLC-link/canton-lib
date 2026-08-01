@@ -54,9 +54,7 @@ pub async fn get_by_party(params: Params) -> Result<Vec<models::JsActiveContract
     let mut response: Vec<models::JsActiveContract> = Vec::new();
     for active_contract in result {
         let Some(contract_entry) = active_contract.contract_entry.as_deref() else {
-            log::warn!(
-                "post_v2_state_active_contracts: skipping entry with no contract_entry"
-            );
+            log::warn!("post_v2_state_active_contracts: skipping entry with no contract_entry");
             continue;
         };
         match contract_entry {

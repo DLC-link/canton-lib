@@ -23,8 +23,11 @@ impl Holding {
             .ok_or("createArgument is not an object")?;
 
         let amount = DamlDecimal::parse(
-            args.get("amount").and_then(|v| v.as_str()).ok_or("Missing 'amount' field")?
-        ).map_err(|e| format!("Invalid 'amount' field: {}", e))?;
+            args.get("amount")
+                .and_then(|v| v.as_str())
+                .ok_or("Missing 'amount' field")?,
+        )
+        .map_err(|e| format!("Invalid 'amount' field: {}", e))?;
 
         let instrument = args
             .get("instrument")

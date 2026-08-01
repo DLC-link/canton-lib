@@ -433,11 +433,7 @@ mod parser_tests {
         // Only a CreatedEvent present — no ExercisedEvent at all.
         let response = transaction_response(
             "tx-x",
-            json!([created_event_value(
-                "pkg:Some:Template",
-                "00x",
-                json!(null),
-            )]),
+            json!([created_event_value("pkg:Some:Template", "00x", json!(null),)]),
         );
 
         let err = parse_consolidate_response(&response).unwrap_err();

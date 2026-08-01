@@ -253,11 +253,7 @@ mod parser_tests {
         // Only a CreatedEvent — parser cannot find an ExercisedEvent.
         let response = transaction_response(
             "tx-x",
-            json!([created_event_value(
-                "pkg:Some:Template",
-                "00x",
-                json!(null),
-            )]),
+            json!([created_event_value("pkg:Some:Template", "00x", json!(null),)]),
         );
 
         let err = parse_split_response(&response).unwrap_err();

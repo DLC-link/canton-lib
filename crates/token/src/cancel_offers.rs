@@ -285,7 +285,13 @@ pub async fn withdraw_batch(params: WithdrawBatchParams) -> Result<WithdrawAllRe
         match outcome {
             Ok(()) => {
                 for cid in batch {
-                    record_withdraw(&mut results, &mut successful_count, &mut failed_count, cid, Ok(()));
+                    record_withdraw(
+                        &mut results,
+                        &mut successful_count,
+                        &mut failed_count,
+                        cid,
+                        Ok(()),
+                    );
                 }
             }
             // A Canton transaction is atomic: one non-withdrawable offer fails the
@@ -301,11 +307,23 @@ pub async fn withdraw_batch(params: WithdrawBatchParams) -> Result<WithdrawAllRe
                         &withdraw_context,
                     )
                     .await;
-                    record_withdraw(&mut results, &mut successful_count, &mut failed_count, cid, single);
+                    record_withdraw(
+                        &mut results,
+                        &mut successful_count,
+                        &mut failed_count,
+                        cid,
+                        single,
+                    );
                 }
             }
             Err(e) => {
-                record_withdraw(&mut results, &mut successful_count, &mut failed_count, &batch[0], Err(e));
+                record_withdraw(
+                    &mut results,
+                    &mut successful_count,
+                    &mut failed_count,
+                    &batch[0],
+                    Err(e),
+                );
             }
         }
     }

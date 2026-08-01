@@ -251,10 +251,7 @@ mod tests {
         // Rounded to 10dp with HalfEven: 0.0152415788
         let a = DamlDecimal::parse("0.1234567890").unwrap();
         let result = a * a;
-        assert_eq!(
-            result.value(),
-            Decimal::from_str("0.0152415788").unwrap()
-        );
+        assert_eq!(result.value(), Decimal::from_str("0.0152415788").unwrap());
     }
 
     #[test]
@@ -262,10 +259,7 @@ mod tests {
         // When the exact result has ≤10dp, rounding is a no-op
         let a = DamlDecimal::parse("0.3333333333").unwrap();
         let b = DamlDecimal::parse("3").unwrap();
-        assert_eq!(
-            (a * b).value(),
-            Decimal::from_str("0.9999999999").unwrap()
-        );
+        assert_eq!((a * b).value(), Decimal::from_str("0.9999999999").unwrap());
     }
 
     #[test]
@@ -273,10 +267,7 @@ mod tests {
         // 1 / 3 = 0.3333333333... rounded to 10dp
         let a = DamlDecimal::parse("1").unwrap();
         let b = DamlDecimal::parse("3").unwrap();
-        assert_eq!(
-            (a / b).value(),
-            Decimal::from_str("0.3333333333").unwrap()
-        );
+        assert_eq!((a / b).value(), Decimal::from_str("0.3333333333").unwrap());
     }
 
     #[test]
@@ -348,22 +339,19 @@ mod tests {
 
     #[test]
     fn deserialize_rejects_excess_scale() {
-        let result: Result<DamlDecimal, _> =
-            serde_json::from_str("\"1.00000000001\"");
+        let result: Result<DamlDecimal, _> = serde_json::from_str("\"1.00000000001\"");
         assert!(result.is_err());
     }
 
     #[test]
     fn deserialize_option_some() {
-        let result: Option<DamlDecimal> =
-            serde_json::from_str("\"3.14\"").unwrap();
+        let result: Option<DamlDecimal> = serde_json::from_str("\"3.14\"").unwrap();
         assert_eq!(result, Some(DamlDecimal::parse("3.14").unwrap()));
     }
 
     #[test]
     fn deserialize_option_null() {
-        let result: Option<DamlDecimal> =
-            serde_json::from_str("null").unwrap();
+        let result: Option<DamlDecimal> = serde_json::from_str("null").unwrap();
         assert_eq!(result, None);
     }
 

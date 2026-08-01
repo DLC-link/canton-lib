@@ -548,8 +548,7 @@ mod parser_tests {
     };
     use serde_json::json;
 
-    const CRED_TID: &str =
-        "pkg-hash:Utility.Credential.V0.Credential:Credential";
+    const CRED_TID: &str = "pkg-hash:Utility.Credential.V0.Credential:Credential";
 
     fn credential_create_argument() -> serde_json::Value {
         json!({

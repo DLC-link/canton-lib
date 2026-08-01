@@ -57,7 +57,9 @@ async fn reject_context(
             .text()
             .await
             .unwrap_or_else(|_| "Unable to read response body".to_string());
-        return Err(format!("Registry request failed with status {status}: {body}"));
+        return Err(format!(
+            "Registry request failed with status {status}: {body}"
+        ));
     }
 
     response

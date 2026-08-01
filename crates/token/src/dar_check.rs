@@ -181,8 +181,8 @@ struct DarEntry {
 /// The Name field gives us the DAR name (e.g., "cbtc-1.1.1").
 /// The Main-Dalf field path contains the package ID as a 64-char hex hash.
 fn extract_dar_info(path: &Path) -> Result<DarEntry, String> {
-    let file =
-        std::fs::File::open(path).map_err(|e| format!("Failed to open {}: {}", path.display(), e))?;
+    let file = std::fs::File::open(path)
+        .map_err(|e| format!("Failed to open {}: {}", path.display(), e))?;
     let mut archive =
         zip::ZipArchive::new(file).map_err(|e| format!("Failed to read ZIP: {}", e))?;
     let mut manifest_file = archive
@@ -217,7 +217,12 @@ fn extract_dar_info(path: &Path) -> Result<DarEntry, String> {
 
     let package_id = dir_part
         .strip_prefix(&format!("{}-", name))
-        .ok_or_else(|| format!("Main-Dalf dir '{}' doesn't start with '{}-'", dir_part, name))?
+        .ok_or_else(|| {
+            format!(
+                "Main-Dalf dir '{}' doesn't start with '{}-'",
+                dir_part, name
+            )
+        })?
         .to_string();
 
     if package_id.len() != 64 || !package_id.chars().all(|c| c.is_ascii_hexdigit()) {
@@ -259,10 +264,21 @@ mod tests {
     #[test]
     fn all_packages_present() {
         let expected = vec![
-            PackageInfo { name: "cbtc".into(), version: "1.1.1".into(), package_id: "aaa".into() },
-            PackageInfo { name: "splice-util".into(), version: "0.1.4".into(), package_id: "bbb".into() },
+            PackageInfo {
+                name: "cbtc".into(),
+                version: "1.1.1".into(),
+                package_id: "aaa".into(),
+            },
+            PackageInfo {
+                name: "splice-util".into(),
+                version: "0.1.4".into(),
+                package_id: "bbb".into(),
+            },
         ];
-        let participant: HashSet<String> = ["aaa", "bbb", "ccc"].iter().map(|s| s.to_string()).collect();
+        let participant: HashSet<String> = ["aaa", "bbb", "ccc"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
 
         let result = compare_packages(&expected, &participant);
 
@@ -275,9 +291,21 @@ mod tests {
     #[test]
     fn some_packages_missing() {
         let expected = vec![
-            PackageInfo { name: "cbtc".into(), version: "1.1.1".into(), package_id: "aaa".into() },
-            PackageInfo { name: "splice-util".into(), version: "0.1.4".into(), package_id: "bbb".into() },
-            PackageInfo { name: "utility-registry-v0".into(), version: "0.4.0".into(), package_id: "ccc".into() },
+            PackageInfo {
+                name: "cbtc".into(),
+                version: "1.1.1".into(),
+                package_id: "aaa".into(),
+            },
+            PackageInfo {
+                name: "splice-util".into(),
+                version: "0.1.4".into(),
+                package_id: "bbb".into(),
+            },
+            PackageInfo {
+                name: "utility-registry-v0".into(),
+                version: "0.4.0".into(),
+                package_id: "ccc".into(),
+            },
         ];
         let participant: HashSet<String> = ["aaa"].iter().map(|s| s.to_string()).collect();
 
@@ -304,9 +332,11 @@ mod tests {
 
     #[test]
     fn empty_participant() {
-        let expected = vec![
-            PackageInfo { name: "cbtc".into(), version: "1.1.1".into(), package_id: "aaa".into() },
-        ];
+        let expected = vec![PackageInfo {
+            name: "cbtc".into(),
+            version: "1.1.1".into(),
+            package_id: "aaa".into(),
+        }];
         let participant: HashSet<String> = HashSet::new();
 
         let result = compare_packages(&expected, &participant);
@@ -342,9 +372,18 @@ mod tests {
 
     #[test]
     fn parse_version_from_dar_names() {
-        assert_eq!(parse_version_from_name("cbtc-1.1.1").unwrap(), Version::parse("1.1.1").unwrap());
-        assert_eq!(parse_version_from_name("utility-commercials-v0-0.4.1").unwrap(), Version::parse("0.4.1").unwrap());
-        assert_eq!(parse_version_from_name("splice-amulet-0.1.17").unwrap(), Version::parse("0.1.17").unwrap());
+        assert_eq!(
+            parse_version_from_name("cbtc-1.1.1").unwrap(),
+            Version::parse("1.1.1").unwrap()
+        );
+        assert_eq!(
+            parse_version_from_name("utility-commercials-v0-0.4.1").unwrap(),
+            Version::parse("0.4.1").unwrap()
+        );
+        assert_eq!(
+            parse_version_from_name("splice-amulet-0.1.17").unwrap(),
+            Version::parse("0.1.17").unwrap()
+        );
         assert!(parse_version_from_name("no-version-here").is_err());
     }
 }

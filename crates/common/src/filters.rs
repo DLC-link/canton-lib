@@ -132,7 +132,9 @@ pub fn convert_identifier_filter(idf: IdentifierFilter) -> models::IdentifierFil
                     interface_filter: Box::new(models::InterfaceFilter {
                         value: Box::new(models::InterfaceFilter1 {
                             interface_id: i.interface_filter.value.interface_id.unwrap_or_default(),
-                            include_interface_view: Some(i.interface_filter.value.include_interface_view),
+                            include_interface_view: Some(
+                                i.interface_filter.value.include_interface_view,
+                            ),
                             include_created_event_blob: Some(
                                 i.interface_filter.value.include_created_event_blob,
                             ),
@@ -228,7 +230,10 @@ mod tests {
             models::IdentifierFilter::IdentifierFilterOneOf1(b) => {
                 assert_eq!(b.interface_filter.value.interface_id, "pkg:Mod:Iface");
                 assert_eq!(b.interface_filter.value.include_interface_view, Some(true));
-                assert_eq!(b.interface_filter.value.include_created_event_blob, Some(false));
+                assert_eq!(
+                    b.interface_filter.value.include_created_event_blob,
+                    Some(false)
+                );
             }
             _ => panic!("Interface variant should map to IdentifierFilterOneOf1"),
         }
@@ -265,7 +270,10 @@ mod tests {
         match out {
             models::IdentifierFilter::IdentifierFilterOneOf2(b) => {
                 assert_eq!(b.template_filter.value.template_id, "pkg:Mod:Tmpl");
-                assert_eq!(b.template_filter.value.include_created_event_blob, Some(true));
+                assert_eq!(
+                    b.template_filter.value.include_created_event_blob,
+                    Some(true)
+                );
             }
             _ => panic!("Template variant should map to IdentifierFilterOneOf2"),
         }
@@ -284,7 +292,10 @@ mod tests {
         ));
         match out {
             models::IdentifierFilter::IdentifierFilterOneOf3(b) => {
-                assert_eq!(b.wildcard_filter.value.include_created_event_blob, Some(true));
+                assert_eq!(
+                    b.wildcard_filter.value.include_created_event_blob,
+                    Some(true)
+                );
             }
             _ => panic!("Wildcard variant should map to IdentifierFilterOneOf3"),
         }

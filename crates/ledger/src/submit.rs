@@ -179,10 +179,8 @@ mod tests {
 
     #[test]
     fn default_transaction_format_includes_act_as_and_read_as_parties() {
-        let submission = sample_submission(
-            vec!["alice".to_string()],
-            Some(vec!["bob".to_string()]),
-        );
+        let submission =
+            sample_submission(vec!["alice".to_string()], Some(vec!["bob".to_string()]));
         let tf = default_transaction_format(&submission);
 
         assert_eq!(

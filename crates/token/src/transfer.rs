@@ -699,8 +699,7 @@ mod parser_tests {
     #[test]
     fn happy_path_extracts_all_fields() {
         let response = happy_response();
-        let (change_cids, offer_cid, update_id) =
-            parse_transfer_response_value(&response).unwrap();
+        let (change_cids, offer_cid, update_id) = parse_transfer_response_value(&response).unwrap();
 
         assert_eq!(change_cids, vec!["00change-cid-1", "00change-cid-2"]);
         assert_eq!(offer_cid, "00transfer-instruction-cid");

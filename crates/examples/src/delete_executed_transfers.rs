@@ -20,7 +20,7 @@
 /// - MAX_CONTRACTS: Maximum number of contracts to delete (default: unlimited)
 /// - NUM_THREADS: Number of parallel threads (default: 4)
 /// - CONTRACT_IDS_CSV: Path to CSV file containing contract IDs (skips chain fetch if set)
-use std::{env};
+use std::env;
 use std::fs;
 use std::sync::Arc;
 use tokio::sync::Mutex;

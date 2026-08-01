@@ -221,11 +221,7 @@ pub(crate) mod test_fixtures {
     /// Build a flat-event `ExercisedEvent` as a JSON value with required
     /// structural fields filled in with placeholders. Pass `exercise_result`
     /// as `json!(null)` if the test doesn't care about it.
-    pub fn exercised_event_value(
-        template_id: &str,
-        choice: &str,
-        exercise_result: Value,
-    ) -> Value {
+    pub fn exercised_event_value(template_id: &str, choice: &str, exercise_result: Value) -> Value {
         json!({
             "ExercisedEvent": {
                 "offset": 1_i64,
