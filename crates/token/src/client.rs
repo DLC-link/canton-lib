@@ -39,6 +39,38 @@ pub struct TokenClientConfig {
     pub keycloak: KeycloakConfig,
 }
 
+/// Parameters for [`TokenClient::send`].
+#[derive(Debug, Clone)]
+pub struct SendParams {
+    /// The receiving party.
+    pub receiver: String,
+    pub amount: DamlDecimal,
+    /// Stored in the transfer's metadata when given.
+    pub reference: Option<String>,
+    /// Bounds how long the offer stays acceptable; one week when `None`.
+    pub execute_before: Option<chrono::Duration>,
+    /// Holdings that fund the transfer; the registry selects them when `None`.
+    pub input_holding_cids: Option<Vec<String>>,
+}
+
+/// Parameters for [`TokenClient::split`].
+#[derive(Debug, Clone)]
+pub struct SplitParams {
+    /// The amounts to split off; the remainder becomes change.
+    pub amounts: Vec<DamlDecimal>,
+    /// Holdings to split; all of the party's holdings when `None`.
+    pub input_holding_cids: Option<Vec<String>>,
+}
+
+/// Parameters for [`TokenClient::distribute`].
+pub struct DistributeParams {
+    pub recipients: Vec<distribute::Recipient>,
+    /// Base for each transfer's unique reference id when given.
+    pub reference_base: Option<String>,
+    /// Called after each transfer completes, with its success or failure.
+    pub on_transfer_complete: Option<Box<transfer::TransferResultCallback>>,
+}
+
 /// A client bound to one token, one party, and one participant.
 ///
 /// Construct with [`TokenClient::connect`]; the access token is refreshed
@@ -108,19 +140,11 @@ impl TokenClient {
     }
 
     /// Send tokens to a receiver as a two-phase transfer (they must accept).
-    /// `reference` is stored in the transfer's metadata when given.
-    /// `execute_before` bounds how long the offer stays acceptable; it
-    /// defaults to one week when `None`.
-    pub async fn send(
-        &mut self,
-        receiver: String,
-        amount: DamlDecimal,
-        reference: Option<String>,
-        execute_before: Option<chrono::Duration>,
-    ) -> Result<(), String> {
+    /// See [`SendParams`] for the optional fields and their defaults.
+    pub async fn send(&mut self, params: SendParams) -> Result<(), String> {
         let access_token = self.fresh_token().await?;
 
-        let meta = reference.map(|r| {
+        let meta = params.reference.map(|r| {
             let mut values = HashMap::new();
             values.insert(
                 "splice.lfdecentralizedtrust.org/reason".to_string(),
@@ -135,14 +159,16 @@ impl TokenClient {
         transfer::submit(transfer::Params {
             transfer: common::transfer::Transfer {
                 sender: self.config.party.clone(),
-                receiver,
-                amount,
+                receiver: params.receiver,
+                amount: params.amount,
                 instrument_id: self.config.instrument.clone(),
                 requested_at: chrono::Utc::now().to_rfc3339(),
                 execute_before: (chrono::Utc::now()
-                    + execute_before.unwrap_or(chrono::Duration::hours(168)))
+                    + params
+                        .execute_before
+                        .unwrap_or(chrono::Duration::hours(168)))
                 .to_rfc3339(),
-                input_holding_cids: None,
+                input_holding_cids: params.input_holding_cids,
                 meta,
             },
             ledger_host: self.config.ledger_host.clone(),
@@ -288,18 +314,22 @@ impl TokenClient {
         .await
     }
 
-    /// Split all holdings into the given amounts plus change.
-    pub async fn split(&mut self, amounts: Vec<DamlDecimal>) -> Result<split::SplitResult, String> {
-        let input_holding_cids: Vec<String> = self
-            .holdings()
-            .await?
-            .into_iter()
-            .map(|c| c.created_event.contract_id)
-            .collect();
+    /// Split holdings into the given amounts plus change.
+    /// See [`SplitParams`] for the optional fields and their defaults.
+    pub async fn split(&mut self, params: SplitParams) -> Result<split::SplitResult, String> {
+        let input_holding_cids = match params.input_holding_cids {
+            Some(cids) => cids,
+            None => self
+                .holdings()
+                .await?
+                .into_iter()
+                .map(|c| c.created_event.contract_id)
+                .collect(),
+        };
         let access_token = self.fresh_token().await?;
         split::submit(split::Params {
             party: self.config.party.clone(),
-            amounts,
+            amounts: params.amounts,
             instrument_id: self.config.instrument.clone(),
             input_holding_cids,
             ledger_host: self.config.ledger_host.clone(),
@@ -311,13 +341,13 @@ impl TokenClient {
     }
 
     /// Distribute to many recipients with sequential chained transfers.
+    /// See [`DistributeParams`] for the optional fields and their defaults.
     pub async fn distribute(
         &mut self,
-        recipients: Vec<distribute::Recipient>,
-        reference_base: Option<String>,
+        params: DistributeParams,
     ) -> Result<transfer::SequentialChainedResult, String> {
         distribute::submit(distribute::Params {
-            recipients,
+            recipients: params.recipients,
             sender: self.config.party.clone(),
             instrument_id: self.config.instrument.clone(),
             ledger_host: self.config.ledger_host.clone(),
@@ -327,8 +357,8 @@ impl TokenClient {
             keycloak_username: self.config.keycloak.username.clone(),
             keycloak_password: self.config.keycloak.password.clone(),
             keycloak_url: self.config.keycloak.url.clone(),
-            reference_base,
-            on_transfer_complete: None,
+            reference_base: params.reference_base,
+            on_transfer_complete: params.on_transfer_complete,
         })
         .await
     }
@@ -362,12 +392,13 @@ mod integration_tests {
 
         // Party 1 offers 1 to party 2.
         let party_1_balance = balance(&mut p1).await;
-        p1.send(
-            state.party_2.clone(),
-            dec("1"),
-            Some(test_uuid.clone()),
-            None,
-        )
+        p1.send(SendParams {
+            receiver: state.party_2.clone(),
+            amount: dec("1"),
+            reference: Some(test_uuid.clone()),
+            execute_before: None,
+            input_holding_cids: None,
+        })
         .await
         .expect("party 1 send failed");
         let outgoing = outgoing_with_reference(&mut p1, &test_uuid).await;
@@ -387,12 +418,13 @@ mod integration_tests {
         );
 
         // Party 2 offers 1 back to party 1.
-        p2.send(
-            state.party_1.clone(),
-            dec("1"),
-            Some(test_uuid.clone()),
-            None,
-        )
+        p2.send(SendParams {
+            receiver: state.party_1.clone(),
+            amount: dec("1"),
+            reference: Some(test_uuid.clone()),
+            execute_before: None,
+            input_holding_cids: None,
+        })
         .await
         .expect("party 2 send failed");
         let outgoing = outgoing_with_reference(&mut p2, &test_uuid).await;
@@ -429,12 +461,13 @@ mod integration_tests {
 
         // Party 1 offers 1.24, then cancels its own offer.
         let party_1_balance = balance(&mut p1).await;
-        p1.send(
-            state.party_2.clone(),
-            dec("1.24"),
-            Some(test_uuid.clone()),
-            None,
-        )
+        p1.send(SendParams {
+            receiver: state.party_2.clone(),
+            amount: dec("1.24"),
+            reference: Some(test_uuid.clone()),
+            execute_before: None,
+            input_holding_cids: None,
+        })
         .await
         .expect("party 1 send of 1.24 failed");
         let outgoing = outgoing_with_reference(&mut p1, &test_uuid).await;
@@ -451,12 +484,13 @@ mod integration_tests {
         );
 
         // Party 1 offers 1.25; party 2 rejects it.
-        p1.send(
-            state.party_2.clone(),
-            dec("1.25"),
-            Some(test_uuid.clone()),
-            None,
-        )
+        p1.send(SendParams {
+            receiver: state.party_2.clone(),
+            amount: dec("1.25"),
+            reference: Some(test_uuid.clone()),
+            execute_before: None,
+            input_holding_cids: None,
+        })
         .await
         .expect("party 1 send of 1.25 failed");
         let outgoing = outgoing_with_reference(&mut p1, &test_uuid).await;
@@ -496,9 +530,13 @@ mod integration_tests {
                 amount: dec(amount),
             })
             .collect();
-        p1.distribute(recipients, Some(test_uuid.clone()))
-            .await
-            .expect("distribute failed");
+        p1.distribute(DistributeParams {
+            recipients,
+            reference_base: Some(test_uuid.clone()),
+            on_transfer_complete: None,
+        })
+        .await
+        .expect("distribute failed");
 
         // All three offers share one encoded reference: the sender and the
         // receiver are the same for each of them.
@@ -574,7 +612,12 @@ mod integration_tests {
                 party_1_balance > dec("1"),
                 "party 1 needs more than 1 to split off a second UTXO"
             );
-            p1.split(vec![dec("1")]).await.expect("setup split failed");
+            p1.split(SplitParams {
+                amounts: vec![dec("1")],
+                input_holding_cids: None,
+            })
+            .await
+            .expect("setup split failed");
         }
         let result = p1
             .check_and_consolidate(2)
@@ -612,7 +655,13 @@ mod integration_tests {
             "party 1 needs more than 3.5 to split with change"
         );
 
-        let result = p1.split(amounts.clone()).await.expect("split failed");
+        let result = p1
+            .split(SplitParams {
+                amounts: amounts.clone(),
+                input_holding_cids: None,
+            })
+            .await
+            .expect("split failed");
         assert_eq!(
             result.output_holding_cids.len(),
             amounts.len(),

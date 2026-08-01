@@ -19,4 +19,6 @@ mod test_utils;
 pub mod transfer;
 pub mod utils;
 
-pub use client::{KeycloakConfig, TokenClient, TokenClientConfig};
+pub use client::{
+    DistributeParams, KeycloakConfig, SendParams, SplitParams, TokenClient, TokenClientConfig,
+};
