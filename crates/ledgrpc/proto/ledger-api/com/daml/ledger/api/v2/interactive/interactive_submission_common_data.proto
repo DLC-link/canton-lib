@@ -1,4 +1,4 @@
-// Copyright (c) 2025 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+// Copyright (c) 2026 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
 syntax = "proto3";
@@ -13,8 +13,24 @@ option java_package = "com.daml.ledger.api.v2.interactive";
 
 message GlobalKey {
   // The identifier uses the package-id reference format.
+  //
+  // Required
   Identifier template_id = 1;
+  // Required
   string package_name = 2;
+  // Required
   Value key = 3;
+  // Required: must be non-empty
   bytes hash = 4;
+}
+
+message GlobalKeyWithMaintainers {
+  // The key
+  //
+  // Required
+  GlobalKey key = 1;
+  // Key maintainers
+  //
+  // Required: must be non-empty
+  repeated string maintainers = 2;
 }

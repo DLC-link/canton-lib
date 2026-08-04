@@ -1,4 +1,4 @@
-// Copyright (c) 2025 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+// Copyright (c) 2026 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
 syntax = "proto3";
@@ -53,6 +53,15 @@ message DynamicSynchronizerParameters {
   google.protobuf.Duration ledger_time_record_time_tolerance = 5;
   google.protobuf.Duration reconciliation_interval = 6;
   google.protobuf.Duration mediator_deduplication_timeout = 7;
+
+  // Note: limits obtained from the topology transactions are active
+  // on Netty only after a node restart, since it is not possible
+  // to change the configured maxRequestSize on a running instance
+  // of Netty. However, the application-layer size checks
+  // (in GrpcSequencerService) are immediately active after an update.
+
+  // Thus, in combination, decreased limits are immediately
+  // enforced, but increased limits require a node restart to update.
   uint32 max_request_size = 8;
 
   // topology related validation parameters
