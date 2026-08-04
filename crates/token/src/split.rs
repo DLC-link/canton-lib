@@ -175,9 +175,10 @@ fn parse_split_response(
 pub async fn submit(params: Params) -> Result<SplitResult, String> {
     let mut output_holding_cids = Vec::new();
     let mut current_holdings = params.input_holding_cids;
+    let total_splits = params.amounts.len();
 
     // Split off each amount sequentially
-    for amount in params.amounts {
+    for (idx, amount) in params.amounts.into_iter().enumerate() {
         let (output_cid, change_cids) = split_once(
             params.party.clone(),
             amount,
@@ -193,7 +194,7 @@ pub async fn submit(params: Params) -> Result<SplitResult, String> {
         output_holding_cids.push(output_cid);
         current_holdings = change_cids;
 
-        if current_holdings.is_empty() {
+        if current_holdings.is_empty() && idx + 1 < total_splits {
             return Err("Insufficient funds for split".to_string());
         }
     }

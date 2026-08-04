@@ -3,11 +3,11 @@
 //
 // The OpenAPI generator names the three `oneOf` variants positionally
 // (`EventOneOf` / `EventOneOf1` / `EventOneOf2`) because the upstream
-// Canton OpenAPI spec doesn't give each branch a name. The Cargo.toml
-// constraint `canton-api-client = "3.3.0-0.1.0"` resolves to crates.io
-// version 3.3.0-0.1.1 (per Cargo.lock); that resolution locks the
-// variant ordering for us, but matching on those positional names at
-// every call site is fragile if the upstream spec is ever regenerated.
+// Canton OpenAPI spec doesn't give each branch a name. The `canton-api-client`
+// crate therefore generates the `oneOf` variants positionally.
+// Matching on those positional names at every call site is fragile if the
+// upstream spec is ever regenerated, so these helpers centralise the match.
+//
 // These helpers centralise the match so a future variant renumbering
 // only touches this one file.
 //

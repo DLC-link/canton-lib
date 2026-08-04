@@ -146,9 +146,12 @@ impl TokenState {
 
             self.access_token = auth.access_token.clone();
             self.refresh_token = auth.refresh_token;
-            // Set expiry to 1 minute before actual expiry
-            self.expires_at = std::time::SystemTime::now()
-                + std::time::Duration::from_secs(auth.expires_in as u64 - 60);
+            // Set expiry to 1 minute before actual expiry (or immediately if TTL < 60s)
+            self.expires_at = {
+                let expires_in = u64::try_from(auth.expires_in).unwrap_or(0);
+                std::time::SystemTime::now()
+                    + std::time::Duration::from_secs(expires_in.saturating_sub(60))
+            };
         }
 
         Ok(self.access_token.clone())
