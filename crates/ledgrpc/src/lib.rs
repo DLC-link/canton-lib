@@ -97,6 +97,12 @@ pub mod com {
                         tonic::include_proto!("com.digitalasset.canton.admin.time.v30");
                     }
                 }
+
+                pub mod topology {
+                    pub mod v30 {
+                        tonic::include_proto!("com.digitalasset.canton.admin.topology.v30");
+                    }
+                }
             }
 
             pub mod connection {
@@ -108,6 +114,10 @@ pub mod com {
             pub mod crypto {
                 pub mod v30 {
                     tonic::include_proto!("com.digitalasset.canton.crypto.v30");
+                }
+
+                pub mod v31 {
+                    tonic::include_proto!("com.digitalasset.canton.crypto.v31");
                 }
 
                 pub mod admin {
@@ -131,6 +141,14 @@ pub mod com {
                         tonic::include_proto!("com.digitalasset.canton.participant.protocol.v30");
                     }
                 }
+
+                pub mod synchronizer {
+                    pub mod v30 {
+                        tonic::include_proto!(
+                            "com.digitalasset.canton.participant.synchronizer.v30"
+                        );
+                    }
+                }
             }
 
             pub mod protocol {
@@ -140,6 +158,10 @@ pub mod com {
 
                 pub mod v31 {
                     tonic::include_proto!("com.digitalasset.canton.protocol.v31");
+                }
+
+                pub mod v32 {
+                    tonic::include_proto!("com.digitalasset.canton.protocol.v32");
                 }
             }
 
@@ -174,6 +196,12 @@ pub mod com {
                             pub mod v30 {
                                 tonic::include_proto!(
                                     "com.digitalasset.canton.synchronizer.sequencing.sequencer.bftordering.v30"
+                                );
+                            }
+
+                            pub mod v31 {
+                                tonic::include_proto!(
+                                    "com.digitalasset.canton.synchronizer.sequencing.sequencer.bftordering.v31"
                                 );
                             }
 

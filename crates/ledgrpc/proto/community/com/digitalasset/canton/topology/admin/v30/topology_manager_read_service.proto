@@ -1,10 +1,11 @@
-// Copyright (c) 2025 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+// Copyright (c) 2026 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
 syntax = "proto3";
 
 package com.digitalasset.canton.topology.admin.v30;
 
+import "com/digitalasset/canton/protocol/v30/sequencing_parameters.proto";
 import "com/digitalasset/canton/protocol/v30/synchronizer_parameters.proto";
 import "com/digitalasset/canton/protocol/v30/topology.proto";
 import "com/digitalasset/canton/topology/admin/v30/common.proto";
@@ -16,6 +17,7 @@ service TopologyManagerReadService {
   rpc ListDecentralizedNamespaceDefinition(ListDecentralizedNamespaceDefinitionRequest) returns (ListDecentralizedNamespaceDefinitionResponse);
 
   rpc ListOwnerToKeyMapping(ListOwnerToKeyMappingRequest) returns (ListOwnerToKeyMappingResponse);
+  // Note that PartyToKeyMapping is deprecated in favor of PartyToParticipant
   rpc ListPartyToKeyMapping(ListPartyToKeyMappingRequest) returns (ListPartyToKeyMappingResponse);
 
   rpc ListSynchronizerTrustCertificate(ListSynchronizerTrustCertificateRequest) returns (ListSynchronizerTrustCertificateResponse);
@@ -26,29 +28,39 @@ service TopologyManagerReadService {
   rpc ListPartyToParticipant(ListPartyToParticipantRequest) returns (ListPartyToParticipantResponse);
 
   rpc ListSynchronizerParametersState(ListSynchronizerParametersStateRequest) returns (ListSynchronizerParametersStateResponse);
+  rpc ListSequencingParametersState(ListSequencingParametersStateRequest) returns (ListSequencingParametersStateResponse);
   rpc ListMediatorSynchronizerState(ListMediatorSynchronizerStateRequest) returns (ListMediatorSynchronizerStateResponse);
   rpc ListSequencerSynchronizerState(ListSequencerSynchronizerStateRequest) returns (ListSequencerSynchronizerStateResponse);
 
-  rpc ListSynchronizerUpgradeAnnouncement(ListSynchronizerUpgradeAnnouncementRequest) returns (ListSynchronizerUpgradeAnnouncementResponse);
-  rpc ListSequencerConnectionSuccessor(ListSequencerConnectionSuccessorRequest) returns (ListSequencerConnectionSuccessorResponse);
+  rpc ListLsuAnnouncement(ListLsuAnnouncementRequest) returns (ListLsuAnnouncementResponse);
+  rpc ListLsuSequencerConnectionSuccessor(ListLsuSequencerConnectionSuccessorRequest) returns (ListLsuSequencerConnectionSuccessorResponse);
 
   rpc ListAvailableStores(ListAvailableStoresRequest) returns (ListAvailableStoresResponse);
-  rpc ListAll(ListAllRequest) returns (ListAllResponse);
-  rpc ExportTopologySnapshot(ExportTopologySnapshotRequest) returns (stream ExportTopologySnapshotResponse);
+  rpc ListAll(ListAllRequest) returns (ListAllResponse) {
+    option deprecated = true;
+  }
+  rpc ListAllV2(ListAllV2Request) returns (ListAllV2Response);
+  // Deprecated in favor of ExportTopologySnapshotV2
+  rpc ExportTopologySnapshot(ExportTopologySnapshotRequest) returns (stream ExportTopologySnapshotResponse) {
+    option deprecated = true;
+  }
   rpc ExportTopologySnapshotV2(ExportTopologySnapshotV2Request) returns (stream ExportTopologySnapshotV2Response);
 
   // Fetch the genesis topology state.
   // The returned bytestring can be used directly to initialize a sequencer.
-  rpc GenesisState(GenesisStateRequest) returns (stream GenesisStateResponse);
+  // Deprecated in favor of GenesisStateV2
+  rpc GenesisState(GenesisStateRequest) returns (stream GenesisStateResponse) {
+    option deprecated = true;
+  }
   rpc GenesisStateV2(GenesisStateV2Request) returns (stream GenesisStateV2Response);
 
   // Fetch the topology state
   // The returned bytestring can be used directly to initialize a successor sequencer
-  rpc LogicalUpgradeState(LogicalUpgradeStateRequest) returns (stream LogicalUpgradeStateResponse);
+  rpc SequencerLsuState(SequencerLsuStateRequest) returns (stream SequencerLsuStateResponse);
 }
 
 message BaseQuery {
-  StoreId store = 1;
+  v30.StoreId store = 1;
 
   // whether to query only for proposals instead of approved topology mappings
   bool proposals = 2;
@@ -69,10 +81,13 @@ message BaseQuery {
   }
   string filter_signed_key = 8;
   optional int32 protocol_version = 9;
+
+  // The canton version of the client issuing the request, e.g. "3.5.0-rc3"
+  optional string client_version = 10;
 }
 
 message BaseResult {
-  StoreId store = 1;
+  v30.StoreId store = 1;
   google.protobuf.Timestamp sequenced = 2;
   google.protobuf.Timestamp valid_from = 3;
   google.protobuf.Timestamp valid_until = 4;
@@ -91,7 +106,9 @@ message ListNamespaceDelegationRequest {
 message ListNamespaceDelegationResponse {
   message Result {
     BaseResult context = 1;
-    com.digitalasset.canton.protocol.v30.NamespaceDelegation item = 2;
+    oneof item {
+      com.digitalasset.canton.protocol.v30.NamespaceDelegation v30 = 2;
+    }
   }
   repeated Result results = 1;
 }
@@ -118,7 +135,9 @@ message ListOwnerToKeyMappingRequest {
 message ListOwnerToKeyMappingResponse {
   message Result {
     BaseResult context = 1;
-    com.digitalasset.canton.protocol.v30.OwnerToKeyMapping item = 2;
+    oneof item {
+      com.digitalasset.canton.protocol.v30.OwnerToKeyMapping v30 = 2;
+    }
   }
   repeated Result results = 1;
 }
@@ -131,7 +150,9 @@ message ListPartyToKeyMappingRequest {
 message ListPartyToKeyMappingResponse {
   message Result {
     BaseResult context = 1;
-    com.digitalasset.canton.protocol.v30.PartyToKeyMapping item = 2;
+    oneof item {
+      com.digitalasset.canton.protocol.v30.PartyToKeyMapping v30 = 2;
+    }
   }
   repeated Result results = 1;
 }
@@ -196,7 +217,9 @@ message ListPartyToParticipantRequest {
 message ListPartyToParticipantResponse {
   message Result {
     BaseResult context = 1;
-    com.digitalasset.canton.protocol.v30.PartyToParticipant item = 2;
+    oneof item {
+      com.digitalasset.canton.protocol.v30.PartyToParticipant v30 = 2;
+    }
   }
   repeated Result results = 2;
 }
@@ -210,6 +233,19 @@ message ListSynchronizerParametersStateResponse {
   message Result {
     BaseResult context = 1;
     com.digitalasset.canton.protocol.v30.DynamicSynchronizerParameters item = 2;
+  }
+  repeated Result results = 1;
+}
+
+message ListSequencingParametersStateRequest {
+  BaseQuery base_query = 1;
+  string filter_synchronizer_id = 2;
+}
+
+message ListSequencingParametersStateResponse {
+  message Result {
+    BaseResult context = 1;
+    com.digitalasset.canton.protocol.v30.DynamicSequencingParameters item = 2;
   }
   repeated Result results = 1;
 }
@@ -240,28 +276,29 @@ message ListSequencerSynchronizerStateResponse {
   repeated Result results = 1;
 }
 
-message ListSynchronizerUpgradeAnnouncementRequest {
+message ListLsuAnnouncementRequest {
   BaseQuery base_query = 1;
   string filter_synchronizer_id = 2;
 }
 
-message ListSynchronizerUpgradeAnnouncementResponse {
+message ListLsuAnnouncementResponse {
   message Result {
     BaseResult context = 1;
-    com.digitalasset.canton.protocol.v30.SynchronizerUpgradeAnnouncement item = 2;
+    com.digitalasset.canton.protocol.v30.LsuAnnouncement item = 2;
   }
   repeated Result results = 1;
 }
 
-message ListSequencerConnectionSuccessorRequest {
+message ListLsuSequencerConnectionSuccessorRequest {
   BaseQuery base_query = 1;
   string filter_sequencer_id = 2;
+  string filter_successor_physical_synchronizer_id = 3;
 }
 
-message ListSequencerConnectionSuccessorResponse {
+message ListLsuSequencerConnectionSuccessorResponse {
   message Result {
     BaseResult context = 1;
-    com.digitalasset.canton.protocol.v30.SequencerConnectionSuccessor item = 2;
+    com.digitalasset.canton.protocol.v30.LsuSequencerConnectionSuccessor item = 2;
   }
   repeated Result results = 1;
 }
@@ -269,10 +306,11 @@ message ListSequencerConnectionSuccessorResponse {
 message ListAvailableStoresRequest {}
 
 message ListAvailableStoresResponse {
-  repeated StoreId store_ids = 1;
+  repeated v30.StoreId store_ids = 1;
 }
 
 message ListAllRequest {
+  option deprecated = true;
   BaseQuery base_query = 1;
   /** The list of topology mappings to exclude from the result.*/
   repeated string exclude_mappings = 2;
@@ -280,6 +318,21 @@ message ListAllRequest {
 }
 
 message ListAllResponse {
+  option deprecated = true;
+  com.digitalasset.canton.topology.admin.v30.TopologyTransactions result = 1;
+}
+
+message ListAllV2Request {
+  BaseQuery base_query = 1;
+  /** The list of topology mappings to include in the result.
+   * Empty means no inclusion filter (all mappings returned).
+   * Use this instead of ListAllRequest to avoid sending mapping codes
+   * unknown to older servers. */
+  repeated string include_mappings = 2;
+  string filter_namespace = 3;
+}
+
+message ListAllV2Response {
   com.digitalasset.canton.topology.admin.v30.TopologyTransactions result = 1;
 }
 
@@ -305,7 +358,7 @@ message ExportTopologySnapshotV2Response {
 
 message GenesisStateRequest {
   // Must be specified if the genesis state is requested from a participant node.
-  optional StoreId synchronizer_store = 1;
+  optional v30.StoreId synchronizer_store = 1;
   // Optional - the effective time used to fetch the topology transactions. If not provided the effective time of the last topology transaction is used.
   google.protobuf.Timestamp timestamp = 2;
 }
@@ -317,7 +370,7 @@ message GenesisStateResponse {
 
 message GenesisStateV2Request {
   // Must be specified if the genesis state is requested from a participant node.
-  optional StoreId synchronizer_store = 1;
+  optional v30.StoreId synchronizer_store = 1;
   // Optional - the effective time used to fetch the topology transactions. If not provided the effective time of the last topology transaction is used.
   google.protobuf.Timestamp timestamp = 2;
 }
@@ -327,9 +380,18 @@ message GenesisStateV2Response {
   bytes chunk = 1;
 }
 
-message LogicalUpgradeStateRequest {}
+message SequencerLsuStateRequest {
+  // Must be specified if the node is configured with more than one active synchronizer.
+  optional v30.StoreId synchronizer_store = 1;
 
-message LogicalUpgradeStateResponse {
+  // The effective time used to fetch the topology transactions
+  // MUST be empty for regular LSUs.
+  // SHOULD be defined in a disaster recovery scenario when requesting the topology from a synchronizer
+  // without an announced LSU.
+  optional google.protobuf.Timestamp timestamp = 2;
+}
+
+message SequencerLsuStateResponse {
   // versioned stored topology transactions
   bytes chunk = 1;
 }

@@ -1,4 +1,4 @@
-// Copyright (c) 2025 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+// Copyright (c) 2026 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
 syntax = "proto3";
@@ -24,6 +24,8 @@ message SequencerAuthentication {
   message ChallengeRequest {
     string member = 1;
     repeated int32 member_protocol_versions = 2;
+    // Version of the binary of the client. Introduced with 3.5 / pv=35.
+    string client_version = 3;
   }
 
   message ChallengeResponse {
