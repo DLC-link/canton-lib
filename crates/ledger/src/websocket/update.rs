@@ -130,12 +130,18 @@ mod integration_tests {
     //! `PARTY_ID_1`, `KEYCLOAK_URL` (full token endpoint URL),
     //! `KEYCLOAK_CLIENT_AUTH_CLIENT_ID`,
     //! `KEYCLOAK_CLIENT_AUTH_CLIENT_SECRET`.
+    //!
+    //! The subscription filters for the party's `UserService` contract; the
+    //! test only checks the connection, not the update contents.
 
     use super::*;
     use crate::ledger_end;
     use keycloak::login::{ClientCredentialsParams, client_credentials};
     use std::env;
     use tokio::time::Duration;
+
+    const USER_SERVICE_TEMPLATE_ID: &str =
+        "#utility-credential-app-v0:Utility.Credential.App.V0.Service.User:UserService";
 
     fn var(name: &str) -> String {
         env::var(name).unwrap_or_else(|_| panic!("{name} must be set for integration tests"))
@@ -165,15 +171,16 @@ mod integration_tests {
         // The subscription never completes on its own: staying connected
         // and error-free until the timeout fires is the success case.
         let result = tokio::time::timeout(
-            Duration::from_secs(60),
+            Duration::from_secs(20),
             subscribe(
                 Params {
                     ledger_host,
                     party: var("PARTY_ID_1"),
-                    filter: common::IdentifierFilter::WildcardIdentifierFilter(
-                        common::WildcardIdentifierFilter {
-                            wildcard_filter: common::WildcardFilter {
-                                value: common::WildcardFilterValue {
+                    filter: common::IdentifierFilter::TemplateIdentifierFilter(
+                        common::TemplateIdentifierFilter {
+                            template_filter: common::TemplateFilter {
+                                value: common::TemplateFilterValue {
+                                    template_id: Some(USER_SERVICE_TEMPLATE_ID.to_string()),
                                     include_created_event_blob: true,
                                 },
                             },
