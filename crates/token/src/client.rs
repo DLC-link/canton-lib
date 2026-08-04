@@ -818,4 +818,68 @@ mod integration_tests {
         // Merge the pieces back so the wallet keeps its shape for other tests.
         p1.consolidate().await.expect("cleanup consolidate failed");
     }
+
+    #[tokio::test]
+    #[ignore = "integration test: requires live devnet and env vars"]
+    async fn integration_split_total() {
+        let _guard = SERIAL_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let state = IntegrationTestState::from_env();
+        let mut p1 = state.client_for(&state.party_1).await;
+
+        let party_1_balance = balance(&mut p1).await;
+        assert!(
+            party_1_balance > dec("1"),
+            "party 1 needs more than 1 to split the total in two"
+        );
+        // Both amounts are passed explicitly so they sum to the whole
+        // balance and the final split consumes its input exactly, leaving
+        // no change. Passing only `1` would split off the same two UTXOs
+        // but via the change path, which would not cover the exact split.
+        let amounts = vec![dec("1"), party_1_balance - dec("1")];
+
+        let result = p1
+            .split(SplitParams {
+                amounts: amounts.clone(),
+                input_holding_cids: None,
+            })
+            .await
+            .expect("split failed");
+        assert_eq!(
+            result.output_holding_cids.len(),
+            amounts.len(),
+            "split should produce one output UTXO per requested amount"
+        );
+        assert!(
+            result.change_holding_cids.is_empty(),
+            "an exact split should leave no change"
+        );
+
+        // The ACS should hold exactly the two outputs, each carrying its
+        // requested amount, and nothing else.
+        let holdings = p1.holdings().await.expect("holdings failed");
+        assert_eq!(
+            holdings.len(),
+            amounts.len(),
+            "the ACS should hold exactly the split outputs"
+        );
+        for (cid, amount) in result.output_holding_cids.iter().zip(&amounts) {
+            let holding = holdings
+                .iter()
+                .find(|h| &h.created_event.contract_id == cid)
+                .expect("split output holding not found in the ACS");
+            assert_eq!(
+                utils::extract_amount(holding),
+                Some(*amount),
+                "split output holding should carry the requested amount"
+            );
+        }
+        assert_eq!(
+            balance(&mut p1).await,
+            party_1_balance,
+            "split should preserve the balance"
+        );
+
+        // Merge the pieces back so the wallet keeps its shape for other tests.
+        p1.consolidate().await.expect("cleanup consolidate failed");
+    }
 }
