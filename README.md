@@ -301,11 +301,9 @@ Set these environment variables (a `.env` file is loaded when present;
 | `KEYCLOAK_CLIENT_ID` | Keycloak client id for the password flow |
 | `KEYCLOAK_USERNAME` | Keycloak username, shared by both parties |
 | `KEYCLOAK_PASSWORD` | Keycloak password, shared by both parties |
-| `KEYCLOAK_CLIENT_AUTH_CLIENT_ID` | Client id for the client-credentials flow (ledger tests) |
+| `KEYCLOAK_CLIENT_AUTH_CLIENT_ID` | Client id for the client-credentials flow (ledger and wallet tests) |
 | `KEYCLOAK_CLIENT_AUTH_CLIENT_SECRET` | Secret for the client-credentials flow |
 | `WALLET_API_HOST` | Wallet (validator) API base URL (wallet tests) |
-| `AMULET_CLIENT_ID` | Client-credentials client id for the wallet API |
-| `AMULET_CLIENT_SECRET` | Secret for the wallet API client |
 
 ---
 

@@ -58,8 +58,8 @@ mod integration_tests {
     //! Live integration test for the amulet-rules query on the wallet API.
     //! It authenticates with the client-credentials flow and needs these
     //! env vars (a `.env` file is loaded when present): `WALLET_API_HOST`,
-    //! `KEYCLOAK_URL` (full token endpoint URL), `AMULET_CLIENT_ID`,
-    //! `AMULET_CLIENT_SECRET`.
+    //! `KEYCLOAK_URL` (full token endpoint URL),
+    //! `KEYCLOAK_CLIENT_AUTH_CLIENT_ID`, `KEYCLOAK_CLIENT_AUTH_CLIENT_SECRET`.
 
     use super::*;
     use keycloak::login::{ClientCredentialsParams, client_credentials};
@@ -75,8 +75,8 @@ mod integration_tests {
         dotenvy::dotenv().ok();
 
         let login = client_credentials(ClientCredentialsParams {
-            client_id: var("AMULET_CLIENT_ID"),
-            client_secret: var("AMULET_CLIENT_SECRET"),
+            client_id: var("KEYCLOAK_CLIENT_AUTH_CLIENT_ID"),
+            client_secret: var("KEYCLOAK_CLIENT_AUTH_CLIENT_SECRET"),
             url: var("KEYCLOAK_URL"),
         })
         .await
