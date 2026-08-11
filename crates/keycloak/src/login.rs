@@ -27,6 +27,19 @@ impl Response {
     /// Extract the user ID (subject claim) from the access token JWT
     /// Returns the 'sub' claim which is typically the user's UUID
     pub fn get_user_id(&self) -> Result<String, String> {
+        self.get_claim("sub").and_then(|v| {
+            v.as_str()
+                .map(|s| s.to_string())
+                .ok_or_else(|| "'sub' claim is not a string".to_string())
+        })
+    }
+
+    /// Extract an arbitrary claim from the access token JWT (decode-only, no signature verification).
+    ///
+    /// This only decodes the JWT payload; it does not verify the signature or validate
+    /// standard claims (exp, aud, iss). Do not use for authorization decisions —
+    /// rely on server-side token validation for that.
+    pub fn get_claim(&self, claim_name: &str) -> Result<serde_json::Value, String> {
         // JWT format: header.payload.signature
         let parts: Vec<&str> = self.access_token.split('.').collect();
         if parts.len() != 3 {
@@ -36,28 +49,23 @@ impl Response {
         // Decode the payload (second part)
         let payload = parts[1];
 
-        // URL-safe base64 without padding - we need to add padding for the decoder
-        let padding_needed = (4 - (payload.len() % 4)) % 4;
-        let padded = if padding_needed > 0 {
-            format!("{}{}", payload, "=".repeat(padding_needed))
-        } else {
-            payload.to_string()
-        };
-
-        // Decode base64 - use STANDARD engine with padding since we added it
-        let decoded = base64::engine::general_purpose::STANDARD
-            .decode(&padded)
+        // URL-safe base64 without padding - try URL_SAFE_NO_PAD first, fall back to URL_SAFE with padding
+        let decoded = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(payload)
+            .or_else(|_| {
+                let padding_needed = (4 - (payload.len() % 4)) % 4;
+                let padded = format!("{}{}", payload, "=".repeat(padding_needed));
+                base64::engine::general_purpose::URL_SAFE.decode(&padded)
+            })
             .map_err(|e| format!("Failed to decode JWT payload: {}", e))?;
 
         // Parse JSON
         let json: serde_json::Value = serde_json::from_slice(&decoded)
             .map_err(|e| format!("Failed to parse JWT payload JSON: {}", e))?;
 
-        // Extract 'sub' claim
-        json.get("sub")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string())
-            .ok_or_else(|| "JWT does not contain 'sub' claim".to_string())
+        json.get(claim_name)
+            .cloned()
+            .ok_or_else(|| format!("JWT does not contain '{}' claim", claim_name))
     }
 }
 
@@ -242,4 +250,131 @@ pub async fn refresh(params: RefreshParams) -> Result<Response, String> {
         .map_err(|e| format!("Failed to parse response (refresh): {}", e))?;
 
     Ok(response)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use base64::engine::general_purpose::{URL_SAFE, URL_SAFE_NO_PAD};
+
+    /// Build a fake JWT (header.payload.signature) encoding the payload with the given engine
+    fn fake_jwt(payload: &serde_json::Value, engine: &impl base64::Engine) -> String {
+        let header = engine.encode(b"{}");
+        let body = engine.encode(payload.to_string().as_bytes());
+        let sig = engine.encode(b"sig");
+        format!("{}.{}.{}", header, body, sig)
+    }
+
+    #[test]
+    fn test_get_claim_url_safe_no_pad() {
+        // Payload crafted so that base64 output contains '-' and '_' (URL-safe chars)
+        // which would be '+' and '/' in standard base64. STANDARD.decode would fail on these.
+        let payload = serde_json::json!({
+            "sub": "user>>>???<<<",
+            "iss": "https://example.com/auth/realms/test"
+        });
+        let token = fake_jwt(&payload, &URL_SAFE_NO_PAD);
+
+        // Verify the token payload actually contains URL-safe-only characters
+        let raw_payload = token.split('.').nth(1).unwrap();
+        assert!(
+            !raw_payload.contains('+') && !raw_payload.contains('/'),
+            "URL_SAFE_NO_PAD should not produce + or / characters"
+        );
+
+        let resp = Response {
+            access_token: token,
+            expires_in: 300,
+            refresh_token: String::new(),
+        };
+
+        assert_eq!(resp.get_user_id().unwrap(), "user>>>???<<<");
+        assert_eq!(
+            resp.get_claim("iss").unwrap(),
+            serde_json::json!("https://example.com/auth/realms/test")
+        );
+    }
+
+    #[test]
+    fn test_get_claim_url_safe_with_padding_fallback() {
+        // Tokens with URL-safe chars AND padding — the fallback path
+        let payload = serde_json::json!({
+            "sub": "user>>>???<<<",
+            "role": "admin"
+        });
+        let token = fake_jwt(&payload, &URL_SAFE);
+        let resp = Response {
+            access_token: token,
+            expires_in: 300,
+            refresh_token: String::new(),
+        };
+
+        assert_eq!(resp.get_user_id().unwrap(), "user>>>???<<<");
+        assert_eq!(resp.get_claim("role").unwrap(), serde_json::json!("admin"));
+    }
+
+    #[test]
+    fn test_get_claim_missing_claim() {
+        let payload = serde_json::json!({"sub": "user-1"});
+        let token = fake_jwt(&payload, &URL_SAFE_NO_PAD);
+        let resp = Response {
+            access_token: token,
+            expires_in: 0,
+            refresh_token: String::new(),
+        };
+        assert!(resp.get_claim("nonexistent").is_err());
+    }
+
+    #[test]
+    fn test_get_claim_invalid_jwt() {
+        let resp = Response {
+            access_token: "not-a-jwt".to_string(),
+            expires_in: 0,
+            refresh_token: String::new(),
+        };
+        assert!(resp.get_claim("sub").is_err());
+    }
+
+    #[tokio::test]
+    async fn test_password_login() {
+        let url = std::env::var("KEYCLOAK_HOST").expect("KEYCLOAK_HOST must be set");
+        let realm = std::env::var("KEYCLOAK_REALM").expect("KEYCLOAK_REALM must be set");
+        let client_id =
+            std::env::var("KEYCLOAK_CLIENT_ID").expect("KEYCLOAK_CLIENT_ID must be set");
+        let username = std::env::var("KEYCLOAK_USERNAME").expect("KEYCLOAK_USERNAME must be set");
+        let user_password =
+            std::env::var("KEYCLOAK_PASSWORD").expect("KEYCLOAK_PASSWORD must be set");
+
+        let token_url = password_url(&url, &realm);
+        let response = password(PasswordParams {
+            url: token_url,
+            client_id,
+            username,
+            password: user_password,
+        })
+        .await
+        .expect("Password login should succeed");
+
+        assert!(
+            !response.access_token.is_empty(),
+            "Access token should not be empty"
+        );
+        assert!(response.expires_in > 0, "expires_in should be positive");
+
+        // Verify URL_SAFE_NO_PAD decoding works on a real token
+        let user_id = response
+            .get_user_id()
+            .expect("Should be able to extract user_id (sub) from real token");
+        assert!(
+            !user_id.is_empty(),
+            "User ID from real token should not be empty"
+        );
+        println!("Decoded user_id (sub): {}", user_id);
+
+        // Also verify we can extract another standard claim
+        let iss = response
+            .get_claim("iss")
+            .expect("Should be able to extract 'iss' claim from real token");
+        println!("Decoded issuer (iss): {}", iss);
+    }
 }
