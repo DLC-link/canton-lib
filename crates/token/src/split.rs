@@ -13,9 +13,51 @@ pub struct Params {
     pub decentralized_party_id: String,
 }
 
+#[derive(Debug, Default)]
 pub struct SplitResult {
     pub output_holding_cids: Vec<String>,
     pub change_holding_cids: Vec<String>,
+}
+
+/// Error from [`submit`], carrying what the failed run already created.
+///
+/// `partial` holds the holdings `submit` knows it created before the failure.
+/// The failing step itself may also have committed (a response can fail to
+/// parse after a successful submission), so callers that need an exact
+/// picture should re-query the ACS.
+#[derive(Debug)]
+pub struct Error {
+    pub message: String,
+    pub partial: SplitResult,
+}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{} ({} output and {} change holdings already created)",
+            self.message,
+            self.partial.output_holding_cids.len(),
+            self.partial.change_holding_cids.len()
+        )
+    }
+}
+
+impl std::error::Error for Error {}
+
+impl From<String> for Error {
+    fn from(message: String) -> Self {
+        Error {
+            message,
+            partial: SplitResult::default(),
+        }
+    }
+}
+
+impl From<Error> for String {
+    fn from(error: Error) -> Self {
+        error.to_string()
+    }
 }
 
 /// Split a single amount using MergeSplit
@@ -172,30 +214,53 @@ fn parse_split_response(
 /// Split holdings into multiple chunks plus change.
 /// Takes input holdings and splits them sequentially into the specified amounts.
 /// Returns all output holdings plus any remaining change.
-pub async fn submit(params: Params) -> Result<SplitResult, String> {
+///
+/// Each amount is split in its own ledger transaction, so a failure part-way
+/// through leaves the earlier splits committed. The [`Error`] carries the
+/// holdings created before the failure.
+pub async fn submit(params: Params) -> Result<SplitResult, Error> {
     let mut output_holding_cids = Vec::new();
     let mut current_holdings = params.input_holding_cids;
     let total_splits = params.amounts.len();
 
     // Split off each amount sequentially
     for (idx, amount) in params.amounts.into_iter().enumerate() {
-        let (output_cid, change_cids) = split_once(
+        let step = split_once(
             params.party.clone(),
             amount,
             params.instrument_id.clone(),
-            current_holdings,
+            current_holdings.clone(),
             params.ledger_host.clone(),
             params.access_token.clone(),
             params.registry_url.clone(),
             params.decentralized_party_id.clone(),
         )
-        .await?;
+        .await;
+
+        let (output_cid, change_cids) = match step {
+            Ok(step) => step,
+            Err(message) => {
+                return Err(Error {
+                    message,
+                    partial: SplitResult {
+                        output_holding_cids,
+                        change_holding_cids: current_holdings,
+                    },
+                });
+            }
+        };
 
         output_holding_cids.push(output_cid);
         current_holdings = change_cids;
 
         if current_holdings.is_empty() && idx + 1 < total_splits {
-            return Err("Insufficient funds for split".to_string());
+            return Err(Error {
+                message: "Insufficient funds for split".to_string(),
+                partial: SplitResult {
+                    output_holding_cids,
+                    change_holding_cids: current_holdings,
+                },
+            });
         }
     }
 

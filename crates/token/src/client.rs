@@ -316,7 +316,11 @@ impl TokenClient {
 
     /// Split holdings into the given amounts plus change.
     /// See [`SplitParams`] for the optional fields and their defaults.
-    pub async fn split(&mut self, params: SplitParams) -> Result<split::SplitResult, String> {
+    ///
+    /// Each amount is split in its own ledger transaction, so the operation
+    /// can complete partially; the [`split::Error`] carries the holdings
+    /// created before the failure.
+    pub async fn split(&mut self, params: SplitParams) -> Result<split::SplitResult, split::Error> {
         let input_holding_cids = match params.input_holding_cids {
             Some(cids) => cids,
             None => self
