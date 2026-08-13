@@ -60,7 +60,7 @@ pub async fn get(params: Params) -> Result<Vec<ledger::models::JsActiveContract>
                     let lock = value.get("lock").unwrap_or_default();
 
                     // Note: We have to check the lock value to be null
-                    if instrument.eq_ignore_ascii_case(&wanted_instrument.id)
+                    if instrument == wanted_instrument.id
                         && admin == wanted_instrument.admin
                         && lock.as_null().is_some()
                     {

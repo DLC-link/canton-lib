@@ -107,7 +107,7 @@ async fn fetch_transfers(
                     let is_instrument = if let Some(instrument) = transfer.get("instrumentId") {
                         let id_ok = if let Some(id) = instrument.get("id") {
                             if let Some(id_str) = id.as_str() {
-                                id_str.eq_ignore_ascii_case(&instrument_id.id)
+                                id_str == instrument_id.id
                             } else {
                                 false
                             }
