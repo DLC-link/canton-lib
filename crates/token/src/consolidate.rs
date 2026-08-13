@@ -228,7 +228,7 @@ pub async fn consolidate_utxos(params: ConsolidateParams) -> Result<Vec<String>,
         exercise_command: common::submission::ExerciseCommandData {
             template_id: common::consts::TEMPLATE_TRANSFER_FACTORY.to_string(),
             contract_id: additional_information.factory_id,
-            choice: "TransferFactory_Transfer".to_string(),
+            choice: common::consts::CHOICE_TRANSFER_FACTORY_TRANSFER.to_string(),
             choice_argument: common::submission::ChoiceArgumentsVariations::TransferFactory(
                 common::transfer_factory::ChoiceArguments {
                     expected_admin: params.decentralized_party_id,
@@ -272,7 +272,8 @@ pub async fn consolidate_utxos(params: ConsolidateParams) -> Result<Vec<String>,
 /// Extract the resulting `receiverHoldingCids` from a flat-shaped submit
 /// response for a UTXO consolidation (self-transfer) operation.
 ///
-/// Walks `transaction.events`, finds the first `ExercisedEvent`, and pulls
+/// Walks `transaction.events`, finds the `ExercisedEvent` of the
+/// `TransferFactory_Transfer` choice, and pulls
 /// `exerciseResult.output.value.receiverHoldingCids`. The `exercise_result`
 /// payload stays as raw `serde_json::Value` because its inner shape is a
 /// Daml-encoded variant that isn't part of the Ledger API schema.
@@ -284,6 +285,9 @@ fn parse_consolidate_response(
     let mut result_cids = Vec::new();
     for event in events {
         if let Some(exercised) = crate::event_helpers::as_exercised_event(event) {
+            if exercised.choice != common::consts::CHOICE_TRANSFER_FACTORY_TRANSFER {
+                continue;
+            }
             if let Some(Some(result)) = exercised.exercise_result.as_ref() {
                 // Extract receiverHoldingCids from the Daml-encoded payload
                 if let Some(receiver_cids) =

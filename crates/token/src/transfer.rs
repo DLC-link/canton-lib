@@ -212,7 +212,7 @@ pub async fn submit(mut params: Params) -> Result<(), String> {
         exercise_command: common::submission::ExerciseCommandData {
             template_id: common::consts::TEMPLATE_TRANSFER_FACTORY.to_string(),
             contract_id: additional_information.factory_id,
-            choice: "TransferFactory_Transfer".to_string(),
+            choice: common::consts::CHOICE_TRANSFER_FACTORY_TRANSFER.to_string(),
             choice_argument: common::submission::ChoiceArgumentsVariations::TransferFactory(
                 common::transfer_factory::ChoiceArguments {
                     expected_admin: params.decentralized_party_id,
@@ -452,7 +452,7 @@ pub async fn submit_sequential_chained(
             exercise_command: common::submission::ExerciseCommandData {
                 template_id: common::consts::TEMPLATE_TRANSFER_FACTORY.to_string(),
                 contract_id: factory_id.clone(),
-                choice: "TransferFactory_Transfer".to_string(),
+                choice: common::consts::CHOICE_TRANSFER_FACTORY_TRANSFER.to_string(),
                 choice_argument: common::submission::ChoiceArgumentsVariations::TransferFactory(
                     common::transfer_factory::ChoiceArguments {
                         expected_admin: params.decentralized_party_id.clone(),
@@ -627,7 +627,7 @@ fn parse_transfer_response_value(
 
     for event in events {
         if let Some(exercised) = crate::event_helpers::as_exercised_event(event) {
-            if exercised.choice == "TransferFactory_Transfer" {
+            if exercised.choice == common::consts::CHOICE_TRANSFER_FACTORY_TRANSFER {
                 if let Some(Some(result)) = exercised.exercise_result.as_ref() {
                     // Extract senderChangeCids
                     if let Some(change_array) = result["senderChangeCids"].as_array() {

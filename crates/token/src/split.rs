@@ -125,7 +125,7 @@ async fn split_once(
         exercise_command: common::submission::ExerciseCommandData {
             template_id: common::consts::TEMPLATE_TRANSFER_FACTORY.to_string(),
             contract_id: additional_information.factory_id,
-            choice: "TransferFactory_Transfer".to_string(),
+            choice: common::consts::CHOICE_TRANSFER_FACTORY_TRANSFER.to_string(),
             choice_argument: common::submission::ChoiceArgumentsVariations::TransferFactory(
                 common::transfer_factory::ChoiceArguments {
                     expected_admin: decentralized_party_id,
@@ -169,12 +169,15 @@ async fn split_once(
 /// Extract `(output_cid, change_cids)` from a flat-shaped submit response for
 /// a split (MergeSplit self-transfer).
 ///
-/// Walks `transaction.events`, finds the first `ExercisedEvent` whose
-/// `exercise_result` is an object, then pulls the first
-/// `output.value.receiverHoldingCids[0]` as the output and
-/// `senderChangeCids` as the change list. The `exercise_result` payload is a
-/// raw `serde_json::Value` because the Daml-encoded variant shape isn't part
-/// of the Ledger API schema.
+/// Walks `transaction.events`, selects the `ExercisedEvent` of the
+/// `TransferFactory_Transfer` choice whose `exercise_result` is an object,
+/// then pulls the single `output.value.receiverHoldingCids` entry as the
+/// output and `senderChangeCids` as the change list. The standard types
+/// `receiverHoldingCids` as a list without a cardinality promise; a split
+/// requests one output, so any other length is an error, and the error lists
+/// the CIDs because the transaction has already committed. The
+/// `exercise_result` payload is a raw `serde_json::Value` because the
+/// Daml-encoded variant shape isn't part of the Ledger API schema.
 fn parse_split_response(
     response: &JsSubmitAndWaitForTransactionResponse,
 ) -> Result<(String, Vec<String>), String> {
@@ -183,6 +186,9 @@ fn parse_split_response(
     let mut exercise_result = None;
     for event in events {
         if let Some(exercised) = crate::event_helpers::as_exercised_event(event) {
+            if exercised.choice != common::consts::CHOICE_TRANSFER_FACTORY_TRANSFER {
+                continue;
+            }
             if let Some(Some(result)) = exercised.exercise_result.as_ref() {
                 if result.is_object() {
                     exercise_result = Some(result);
@@ -192,13 +198,28 @@ fn parse_split_response(
         }
     }
 
-    let exercise_result = exercise_result.ok_or("Failed to find ExercisedEvent")?;
+    let exercise_result = exercise_result.ok_or(format!(
+        "Failed to find {} ExercisedEvent",
+        common::consts::CHOICE_TRANSFER_FACTORY_TRANSFER
+    ))?;
 
-    // Extract receiverHoldingCids from output.value.receiverHoldingCids
-    let output_cid = exercise_result["output"]["value"]["receiverHoldingCids"][0]
-        .as_str()
-        .ok_or("Failed to extract output holding CID")?
-        .to_string();
+    let receiver_cids = exercise_result["output"]["value"]["receiverHoldingCids"]
+        .as_array()
+        .ok_or("Failed to extract receiver holding CIDs")?;
+
+    let output_cid = match receiver_cids.as_slice() {
+        [only] => only
+            .as_str()
+            .ok_or("Failed to extract output holding CID")?
+            .to_string(),
+        other => {
+            return Err(format!(
+                "Expected exactly one receiver holding CID in split response, got {}: {:?}",
+                other.len(),
+                other
+            ));
+        }
+    };
 
     // Extract senderChangeCids (remaining holdings after split)
     let change_cids: Vec<String> = exercise_result["senderChangeCids"]
@@ -300,8 +321,7 @@ mod parser_tests {
                         "tag": "TransferInstructionResult_Completed",
                         "value": {
                             "receiverHoldingCids": [
-                                "00output-cid",
-                                "00ignored-cid"
+                                "00output-cid"
                             ]
                         }
                     }
@@ -315,6 +335,65 @@ mod parser_tests {
     }
 
     #[test]
+    fn skips_exercised_events_of_other_choices() {
+        // An earlier object-valued result from a different choice must not
+        // be mistaken for the TransferFactory_Transfer result.
+        let response = transaction_response(
+            "tx-1",
+            json!([
+                exercised_event_value(
+                    "pkg:Some.Other:Template",
+                    "SomeOther_Choice",
+                    json!({ "output": { "value": { "receiverHoldingCids": ["00decoy"] } } }),
+                ),
+                exercised_event_value(
+                    "pkg:Splice.Api.Token.TransferInstructionV1:TransferFactory",
+                    "TransferFactory_Transfer",
+                    json!({
+                        "senderChangeCids": ["00change-1"],
+                        "output": {
+                            "tag": "TransferInstructionResult_Completed",
+                            "value": { "receiverHoldingCids": ["00output-cid"] }
+                        }
+                    }),
+                )
+            ]),
+        );
+
+        let (output_cid, change_cids) = parse_split_response(&response).unwrap();
+        assert_eq!(output_cid, "00output-cid");
+        assert_eq!(change_cids, vec!["00change-1"]);
+    }
+
+    #[test]
+    fn multiple_receiver_cids_return_err_listing_them() {
+        let response = transaction_response(
+            "tx-1",
+            json!([exercised_event_value(
+                "pkg:Splice.Api.Token.TransferInstructionV1:TransferFactory",
+                "TransferFactory_Transfer",
+                json!({
+                    "senderChangeCids": ["00change-1"],
+                    "output": {
+                        "tag": "TransferInstructionResult_Completed",
+                        "value": {
+                            "receiverHoldingCids": ["00output-1", "00output-2"]
+                        }
+                    }
+                }),
+            )]),
+        );
+
+        let err = parse_split_response(&response).unwrap_err();
+        assert!(err.contains("got 2"), "unexpected error: {err}");
+        // The transaction has committed, so the error must carry the CIDs.
+        assert!(
+            err.contains("00output-1") && err.contains("00output-2"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
     fn missing_exercised_event_returns_err() {
         // Only a CreatedEvent — parser cannot find an ExercisedEvent.
         let response = transaction_response(
@@ -324,7 +403,7 @@ mod parser_tests {
 
         let err = parse_split_response(&response).unwrap_err();
         assert!(
-            err.contains("Failed to find ExercisedEvent"),
+            err.contains("Failed to find TransferFactory_Transfer ExercisedEvent"),
             "unexpected error: {err}"
         );
     }
@@ -336,7 +415,7 @@ mod parser_tests {
         let response = transaction_response("tx-x", json!(null));
         let err = parse_split_response(&response).unwrap_err();
         assert!(
-            err.contains("Failed to find ExercisedEvent"),
+            err.contains("Failed to find TransferFactory_Transfer ExercisedEvent"),
             "unexpected error: {err}"
         );
     }
