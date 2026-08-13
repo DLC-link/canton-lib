@@ -123,61 +123,70 @@ pub async fn subscribe(
 }
 
 #[cfg(test)]
-mod tests {
+mod integration_tests {
+    //! Live integration test for the websocket update subscription. It
+    //! authenticates with the client-credentials flow and needs these env
+    //! vars (a `.env` file is loaded when present): `LEDGER_HOST`,
+    //! `PARTY_ID_1`, `KEYCLOAK_URL` (full token endpoint URL),
+    //! `KEYCLOAK_CLIENT_AUTH_CLIENT_ID`,
+    //! `KEYCLOAK_CLIENT_AUTH_CLIENT_SECRET`.
+    //!
+    //! The subscription filters for the party's `UserService` contract; the
+    //! test only checks the connection, not the update contents.
+
     use super::*;
     use crate::ledger_end;
-    use keycloak::login::{ClientCredentialsParams, client_credentials, token_url};
+    use keycloak::login::{ClientCredentialsParams, client_credentials};
     use std::env;
     use tokio::time::Duration;
 
+    const USER_SERVICE_TEMPLATE_ID: &str =
+        "#utility-credential-app-v0:Utility.Credential.App.V0.Service.User:UserService";
+
+    fn var(name: &str) -> String {
+        env::var(name).unwrap_or_else(|_| panic!("{name} must be set for integration tests"))
+    }
+
     #[tokio::test]
-    async fn test_websocket_connection() {
+    #[ignore = "integration test: requires live devnet and env vars"]
+    async fn integration_websocket_connection() {
         dotenvy::dotenv().ok();
+        let ledger_host = var("LEDGER_HOST");
 
-        let ledger_host = env::var("LEDGER_HOST").expect("LEDGER_HOST must be set");
-        let party_id =
-            env::var("DECENTRALIZED_PARTY_ID").expect("DECENTRALIZED_PARTY_ID must be set");
+        let login = client_credentials(ClientCredentialsParams {
+            client_id: var("KEYCLOAK_CLIENT_AUTH_CLIENT_ID"),
+            client_secret: var("KEYCLOAK_CLIENT_AUTH_CLIENT_SECRET"),
+            url: var("KEYCLOAK_URL"),
+        })
+        .await
+        .expect("keycloak client-credentials login failed");
 
-        let params = ClientCredentialsParams {
-            client_id: env::var("KEYCLOAK_CLIENT_ID").expect("KEYCLOAK_CLIENT_ID must be set"),
-            client_secret: env::var("LIB_TEST_LEDGER_END_CLIENT_SECRET")
-                .expect("LIB_TEST_LEDGER_END_CLIENT_SECRET must be set"),
-            url: token_url(
-                &format!(
-                    "{}/auth",
-                    env::var("KEYCLOAK_HOST").expect("KEYCLOAK_HOST must be set")
-                ),
-                &env::var("KEYCLOAK_REALM").expect("KEYCLOAK_REALM must be set"),
-            ),
-        };
-        let login_response = client_credentials(params).await.unwrap();
+        let ledger_end_response = ledger_end::get(ledger_end::Params {
+            access_token: login.access_token.clone(),
+            ledger_host: ledger_host.clone(),
+        })
+        .await
+        .expect("failed to get ledger end");
 
-        let params = ledger_end::Params {
-            access_token: login_response.access_token.clone(),
-            ledger_host: ledger_host.to_string(),
-        };
-
-        let ledger_end_response = ledger_end::get(params)
-            .await
-            .expect("Failed to get ledger end");
-
-        // Run the connection with a timeout instead of spawning and aborting
+        // The subscription never completes on its own: staying connected
+        // and error-free until the timeout fires is the success case.
         let result = tokio::time::timeout(
-            Duration::from_secs(1000),
+            Duration::from_secs(20),
             subscribe(
                 Params {
-                    ledger_host: ledger_host.to_string(),
-                    party: party_id.to_string(),
-                    filter: common::IdentifierFilter::WildcardIdentifierFilter(
-                        common::WildcardIdentifierFilter {
-                            wildcard_filter: common::WildcardFilter {
-                                value: common::WildcardFilterValue {
+                    ledger_host,
+                    party: var("PARTY_ID_1"),
+                    filter: common::IdentifierFilter::TemplateIdentifierFilter(
+                        common::TemplateIdentifierFilter {
+                            template_filter: common::TemplateFilter {
+                                value: common::TemplateFilterValue {
+                                    template_id: Some(USER_SERVICE_TEMPLATE_ID.to_string()),
                                     include_created_event_blob: true,
                                 },
                             },
                         },
                     ),
-                    access_token: login_response.access_token,
+                    access_token: login.access_token,
                     ledger_end: ledger_end_response.offset,
                 },
                 |_msg| Ok(()),
@@ -186,10 +195,7 @@ mod tests {
         .await;
 
         if let Ok(connection_result) = result {
-            match connection_result {
-                Ok(_) => {}
-                Err(_e) => {}
-            }
+            connection_result.expect("websocket subscription failed");
         }
     }
 }

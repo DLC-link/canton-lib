@@ -7,6 +7,7 @@ members = [
   "crates/ledger",
   "crates/ledgrpc",
   "crates/registry",
+  "crates/token",
   "crates/wallet",
 ]
 resolver = "2"
@@ -25,14 +26,23 @@ panic = "unwind"
 
 [workspace.dependencies]
 base64 = { version = "0.22.1" }
+canton-api-client = { version = "3.6.0-0.1.0" }
 chrono = { version = "0.4" }
 common = { path = "crates/common" }
+csv = { version = "1.3" }
 dotenvy = { version = "0.15" }
+env_logger = { version = "0.11" }
 keycloak = { path = "crates/keycloak" }
 ledger = { path = "crates/ledger" }
+log = { version = "0.4" }
+registry = { path = "crates/registry" }
 reqwest = { version = "0.12.24" }
+semver = { version = "1" }
 rust_decimal = { version = "1", default-features = false, features = ["std", "serde-with-str"] }
 serde = { version = "1.0.228" }
 serde_json = { version = "1.0" }
 tokio = { version = "1.48" }
 tokio-macros = { version = "2.5.0" }
+token = { path = "crates/token" }
+uuid = { version = "1.18" }
+zip = { version = "2" }

@@ -62,7 +62,10 @@ mod tests {
         };
 
         let json = serde_json::to_value(&transfer).unwrap();
-        assert_eq!(json["amount"], serde_json::Value::String("0.02".to_string()));
+        assert_eq!(
+            json["amount"],
+            serde_json::Value::String("0.02".to_string())
+        );
 
         let json_str = serde_json::to_string(&transfer).unwrap();
         let deserialized: Transfer = serde_json::from_str(&json_str).unwrap();

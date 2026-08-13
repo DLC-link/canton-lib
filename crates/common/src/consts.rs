@@ -18,6 +18,7 @@ pub const TEMPLATE_WALLET_APP_INSTALL: &str =
     "#splice-amulet:Splice.Wallet.Install:WalletAppInstall";
 pub const TEMPLATE_FEATURED_APP_RIGHT: &str = "#splice-amulet:Splice.Amulet:FeaturedAppRight";
 pub const TEMPLATE_TRANSFER_FACTORY: &str = "#splice-api-token-transfer-instruction-v1:Splice.Api.Token.TransferInstructionV1:TransferFactory";
+pub const CHOICE_TRANSFER_FACTORY_TRANSFER: &str = "TransferFactory_Transfer";
 pub const TEMPLATE_TRANSFER_INSTRUCTION: &str = "#splice-api-token-transfer-instruction-v1:Splice.Api.Token.TransferInstructionV1:TransferInstruction";
 pub const TEMPLATE_ALLOCATION_FACTORY: &str = "#splice-api-token-allocation-instruction-v1:Splice.Api.Token.AllocationInstructionV1:AllocationFactory";
 pub const TEMPLATE_ALLOCATION: &str =

@@ -259,38 +259,48 @@ pub async fn get_open_mining_rounds(
 }
 
 #[cfg(test)]
-mod tests {
+mod integration_tests {
+    //! Live integration test for the open-mining-rounds query on the
+    //! wallet API. It authenticates with the client-credentials flow and
+    //! needs these env vars (a `.env` file is loaded when present):
+    //! `WALLET_API_HOST`, `KEYCLOAK_URL` (full token endpoint URL),
+    //! `KEYCLOAK_CLIENT_AUTH_CLIENT_ID`, `KEYCLOAK_CLIENT_AUTH_CLIENT_SECRET`.
+
     use super::*;
-    use keycloak::login::{ClientCredentialsParams, client_credentials, token_url};
+    use keycloak::login::{ClientCredentialsParams, client_credentials};
     use std::env;
 
+    fn var(name: &str) -> String {
+        env::var(name).unwrap_or_else(|_| panic!("{name} must be set for integration tests"))
+    }
+
     #[tokio::test]
-    async fn test_get_open_mining_rounds() {
-        let params = ClientCredentialsParams {
-            client_id: env::var("KEYCLOAK_CLIENT_ID").expect("KEYCLOAK_CLIENT_ID must be set"),
-            client_secret: env::var("LIB_TEST_AMULET_CLIENT_SECRET")
-                .expect("LIB_TEST_AMULET_CLIENT_SECRET must be set"),
-            url: token_url(
-                &format!(
-                    "{}/auth",
-                    env::var("KEYCLOAK_HOST").expect("KEYCLOAK_HOST must be set")
-                ),
-                &env::var("KEYCLOAK_REALM").expect("KEYCLOAK_REALM must be set"),
-            ),
-        };
-        let result = client_credentials(params).await.unwrap();
-        let wallet_api_host = env::var("WALLET_API_HOST").expect("WALLET_API_HOST must be set");
+    #[ignore = "integration test: requires live devnet and env vars"]
+    async fn integration_get_open_mining_rounds() {
+        dotenvy::dotenv().ok();
 
-        let mining_rounds = get_open_mining_rounds(&wallet_api_host, &result.access_token)
+        let login = client_credentials(ClientCredentialsParams {
+            client_id: var("KEYCLOAK_CLIENT_AUTH_CLIENT_ID"),
+            client_secret: var("KEYCLOAK_CLIENT_AUTH_CLIENT_SECRET"),
+            url: var("KEYCLOAK_URL"),
+        })
+        .await
+        .expect("keycloak client-credentials login failed");
+
+        let mining_rounds = get_open_mining_rounds(&var("WALLET_API_HOST"), &login.access_token)
             .await
-            .expect("Failed to get open mining rounds");
+            .expect("failed to get open mining rounds");
 
-        println!("Open Mining Rounds: {:?}", mining_rounds.open_mining_rounds);
-        println!(
-            "Issuing Mining Rounds: {:?}",
-            mining_rounds.issuing_mining_rounds
+        assert!(
+            !mining_rounds.open_mining_rounds.is_empty(),
+            "there should be at least one open mining round"
         );
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
 
     #[tokio::test]
     async fn test_get_open_mining_rounds_invalid_token() {

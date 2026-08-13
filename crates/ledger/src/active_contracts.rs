@@ -54,9 +54,7 @@ pub async fn get_by_party(params: Params) -> Result<Vec<models::JsActiveContract
     let mut response: Vec<models::JsActiveContract> = Vec::new();
     for active_contract in result {
         let Some(contract_entry) = active_contract.contract_entry.as_deref() else {
-            log::warn!(
-                "post_v2_state_active_contracts: skipping entry with no contract_entry"
-            );
+            log::warn!("post_v2_state_active_contracts: skipping entry with no contract_entry");
             continue;
         };
         match contract_entry {
@@ -110,59 +108,74 @@ fn filter_active_contracts_by_create_argument(
 }
 
 #[cfg(test)]
-mod tests {
+mod integration_tests {
+    //! Live integration test for the active-contracts query. It
+    //! authenticates with the client-credentials flow and needs these env
+    //! vars (a `.env` file is loaded when present): `LEDGER_HOST`,
+    //! `PARTY_ID_1`, `KEYCLOAK_URL` (full token endpoint URL),
+    //! `KEYCLOAK_CLIENT_AUTH_CLIENT_ID`,
+    //! `KEYCLOAK_CLIENT_AUTH_CLIENT_SECRET`.
+    //!
+    //! The query filters for the party's single `UserService` contract. A
+    //! wildcard filter would 413 once the party's ACS outgrows the node's
+    //! HTTP list limit.
+
     use super::*;
     use crate::ledger_end;
-    use keycloak::login::{ClientCredentialsParams, client_credentials, token_url};
+    use keycloak::login::{ClientCredentialsParams, client_credentials};
     use std::env;
 
+    const USER_SERVICE_TEMPLATE_ID: &str =
+        "#utility-credential-app-v0:Utility.Credential.App.V0.Service.User:UserService";
+
+    fn var(name: &str) -> String {
+        env::var(name).unwrap_or_else(|_| panic!("{name} must be set for integration tests"))
+    }
+
     #[tokio::test]
-    async fn test_get_by_party() {
+    #[ignore = "integration test: requires live devnet and env vars"]
+    async fn integration_get_by_party() {
         dotenvy::dotenv().ok();
+        let ledger_host = var("LEDGER_HOST");
 
-        let ledger_host = env::var("LEDGER_HOST").expect("LEDGER_HOST must be set");
-        let party_id = env::var("PARTY_ID").expect("PARTY_ID must be set");
-
-        let params = ClientCredentialsParams {
-            client_id: env::var("KEYCLOAK_CLIENT_ID").expect("KEYCLOAK_CLIENT_ID must be set"),
-            client_secret: env::var("LIB_TEST_LEDGER_END_CLIENT_SECRET")
-                .expect("LIB_TEST_LEDGER_END_CLIENT_SECRET must be set"),
-            url: token_url(
-                &format!(
-                    "{}/auth",
-                    env::var("KEYCLOAK_HOST").expect("KEYCLOAK_HOST must be set")
-                ),
-                &env::var("KEYCLOAK_REALM").expect("KEYCLOAK_REALM must be set"),
-            ),
-        };
-        let login_response = client_credentials(params).await.unwrap();
-
-        let ledger_end_response = ledger_end::get(ledger_end::Params {
-            access_token: login_response.access_token.clone(),
-            ledger_host: ledger_host.to_string(),
+        let login = client_credentials(ClientCredentialsParams {
+            client_id: var("KEYCLOAK_CLIENT_AUTH_CLIENT_ID"),
+            client_secret: var("KEYCLOAK_CLIENT_AUTH_CLIENT_SECRET"),
+            url: var("KEYCLOAK_URL"),
         })
         .await
-        .unwrap();
+        .expect("keycloak client-credentials login failed");
+
+        let ledger_end_response = ledger_end::get(ledger_end::Params {
+            access_token: login.access_token.clone(),
+            ledger_host: ledger_host.clone(),
+        })
+        .await
+        .expect("failed to get ledger end");
 
         let result = get_by_party(Params {
-            ledger_host: ledger_host.to_string(),
-            party: party_id,
-            filter: common::IdentifierFilter::WildcardIdentifierFilter(
-                common::WildcardIdentifierFilter {
-                    wildcard_filter: common::WildcardFilter {
-                        value: common::WildcardFilterValue {
+            ledger_host,
+            party: var("PARTY_ID_1"),
+            filter: common::IdentifierFilter::TemplateIdentifierFilter(
+                common::TemplateIdentifierFilter {
+                    template_filter: common::TemplateFilter {
+                        value: common::TemplateFilterValue {
+                            template_id: Some(USER_SERVICE_TEMPLATE_ID.to_string()),
                             include_created_event_blob: true,
                         },
                     },
                 },
             ),
-            access_token: login_response.access_token,
+            access_token: login.access_token,
             ledger_end: ledger_end_response.offset,
             unknown_contract_entry_handler: None,
         })
         .await
-        .unwrap();
+        .expect("get_by_party failed");
 
-        assert!(!result.is_empty());
+        assert!(
+            !result.is_empty(),
+            "party 1 should hold a UserService contract"
+        );
     }
 }

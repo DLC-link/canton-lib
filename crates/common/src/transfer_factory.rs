@@ -102,10 +102,7 @@ mod tests {
             "instrument-configuration".to_string(),
             ContextValue::ContractId(contract_id.clone()),
         );
-        ctx_values.insert(
-            "sender-credentials".to_string(),
-            ContextValue::List(vec![]),
-        );
+        ctx_values.insert("sender-credentials".to_string(), ContextValue::List(vec![]));
 
         let choice_args = ChoiceArguments {
             expected_admin: "admin1".to_string(),
@@ -135,7 +132,11 @@ mod tests {
         // Verify round-trip: serialized JSON should deserialize back
         let deserialized: ChoiceArguments = serde_json::from_str(&serialized).unwrap();
         assert_eq!(
-            deserialized.extra_args.context.values.get("utility.digitalasset.com/enable-result-contracts"),
+            deserialized
+                .extra_args
+                .context
+                .values
+                .get("utility.digitalasset.com/enable-result-contracts"),
             Some(&ContextValue::Bool(true))
         );
     }
@@ -158,17 +159,28 @@ mod tests {
         }}"#;
         let ctx: Context = serde_json::from_str(json).unwrap();
         assert_eq!(ctx.values.len(), 12);
-        assert_eq!(ctx.values.get("bool-field"), Some(&ContextValue::Bool(true)));
-        assert_eq!(ctx.values.get("text-field"), Some(&ContextValue::Text("hello".to_string())));
+        assert_eq!(
+            ctx.values.get("bool-field"),
+            Some(&ContextValue::Bool(true))
+        );
+        assert_eq!(
+            ctx.values.get("text-field"),
+            Some(&ContextValue::Text("hello".to_string()))
+        );
         assert_eq!(ctx.values.get("int-field"), Some(&ContextValue::Int(42)));
-        assert_eq!(ctx.values.get("party-field"), Some(&ContextValue::Party("party::1220abc".to_string())));
+        assert_eq!(
+            ctx.values.get("party-field"),
+            Some(&ContextValue::Party("party::1220abc".to_string()))
+        );
         assert_eq!(
             ctx.values.get("decimal-field"),
             Some(&ContextValue::Decimal(DamlDecimal::parse("3.14").unwrap()))
         );
         assert_eq!(
             ctx.values.get("nested-list"),
-            Some(&ContextValue::List(vec![ContextValue::ContractId("cid2".to_string())]))
+            Some(&ContextValue::List(vec![ContextValue::ContractId(
+                "cid2".to_string()
+            )]))
         );
     }
 }
