@@ -50,6 +50,61 @@ pub async fn get(params: Params) -> Result<common::transfer_factory::Response, S
     Ok(body)
 }
 
+/// The V2 transfer-factory route.
+///
+/// V2 drops `expectedAdmin` from the choice arguments and adds `actors`. The
+/// response envelope is identical to V1's, so
+/// [`common::transfer_factory::Response`] is reused.
+pub mod v2 {
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Serialize, Deserialize)]
+    pub struct Request {
+        #[serde(rename = "choiceArguments")]
+        pub choice_arguments: common::transfer_factory::v2::ChoiceArguments,
+        #[serde(rename = "excludeDebugFields")]
+        pub exclude_debug_fields: bool,
+    }
+
+    pub struct Params {
+        pub registry_url: String,
+        pub decentralized_party_id: String,
+        pub request: Request,
+    }
+
+    pub fn factory_url(registry_url: &str, decentralized_party_id: &str) -> String {
+        format!(
+            "{registry_url}/api/token-standard/v0/registrars/{decentralized_party_id}/registry/transfer-instruction/v2/transfer-factory"
+        )
+    }
+
+    pub async fn get(params: Params) -> Result<common::transfer_factory::Response, String> {
+        let client = reqwest::Client::new();
+
+        let url = factory_url(&params.registry_url, &params.decentralized_party_id);
+        let response = client
+            .post(url)
+            .json(&params.request)
+            .send()
+            .await
+            .map_err(|e| format!("{e}"))?;
+
+        let status = response.status();
+        let body_raw = response
+            .text()
+            .await
+            .map_err(|e| format!("Failed to read response: {e}"))?;
+
+        if !status.is_success() {
+            return Err(format!(
+                "V2 transfer factory request failed [{status}]: {body_raw:?}"
+            ));
+        }
+
+        serde_json::from_str(&body_raw).map_err(|e| format!("Failed to parse response: {e}"))
+    }
+}
+
 #[cfg(test)]
 mod url_tests {
     use super::*;
@@ -59,6 +114,14 @@ mod url_tests {
         assert_eq!(
             factory_url("https://registry.example", "admin::1220ab"),
             "https://registry.example/api/token-standard/v0/registrars/admin::1220ab/registry/transfer-instruction/v1/transfer-factory"
+        );
+    }
+
+    #[test]
+    fn v2_factory_url_uses_the_v2_path() {
+        assert_eq!(
+            v2::factory_url("https://registry.example", "admin::1220ab"),
+            "https://registry.example/api/token-standard/v0/registrars/admin::1220ab/registry/transfer-instruction/v2/transfer-factory"
         );
     }
 }
