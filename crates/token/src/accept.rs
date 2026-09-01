@@ -194,7 +194,7 @@ pub async fn accept_all(params: AcceptAllParams) -> Result<AcceptAllResult, Stri
 
     const BATCH_SIZE: usize = 5;
     let total_transfers = pending_transfers.len();
-    let num_batches = (total_transfers + BATCH_SIZE - 1) / BATCH_SIZE;
+    let num_batches = total_transfers.div_ceil(BATCH_SIZE);
 
     log::debug!(
         "Submitting {} acceptances in {} batch(es) of up to {}...",
@@ -244,16 +244,16 @@ pub async fn accept_all(params: AcceptAllParams) -> Result<AcceptAllResult, Stri
             let mut amount = None;
             let mut sender = None;
 
-            if let Some(create_arg) = &transfer.created_event.create_argument {
-                if let Some(transfer_data) = create_arg.get("transfer") {
-                    if let Some(amt) = transfer_data.get("amount") {
-                        amount = amt.as_str().map(|s| s.to_string());
-                        log::debug!("Amount: {}", amt);
-                    }
-                    if let Some(sndr) = transfer_data.get("sender") {
-                        sender = sndr.as_str().map(|s| s.to_string());
-                        log::debug!("From: {}", sndr.as_str().unwrap_or("unknown"));
-                    }
+            if let Some(create_arg) = &transfer.created_event.create_argument
+                && let Some(transfer_data) = create_arg.get("transfer")
+            {
+                if let Some(amt) = transfer_data.get("amount") {
+                    amount = amt.as_str().map(|s| s.to_string());
+                    log::debug!("Amount: {}", amt);
+                }
+                if let Some(sndr) = transfer_data.get("sender") {
+                    sender = sndr.as_str().map(|s| s.to_string());
+                    log::debug!("From: {}", sndr.as_str().unwrap_or("unknown"));
                 }
             }
 

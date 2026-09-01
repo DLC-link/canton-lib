@@ -128,16 +128,13 @@ impl TokenState {
                 Err(e) => {
                     if e.contains("Token is not active") {
                         // Try full password login as fallback
-                        let auth_response =
-                            keycloak::login::password(keycloak::login::PasswordParams {
-                                client_id: self.client_id.clone(),
-                                username: self.username.clone(),
-                                password: self.password.clone(),
-                                url: self.url.clone(),
-                            })
-                            .await?;
-
-                        auth_response
+                        keycloak::login::password(keycloak::login::PasswordParams {
+                            client_id: self.client_id.clone(),
+                            username: self.username.clone(),
+                            password: self.password.clone(),
+                            url: self.url.clone(),
+                        })
+                        .await?
                     } else {
                         return Err(format!("Failed to refresh JWT: {}", e));
                     }
@@ -148,7 +145,7 @@ impl TokenState {
             self.refresh_token = auth.refresh_token;
             // Set expiry to 1 minute before actual expiry (or immediately if TTL < 60s)
             self.expires_at = {
-                let expires_in = u64::try_from(auth.expires_in).unwrap_or(0);
+                let expires_in = u64::from(auth.expires_in);
                 std::time::SystemTime::now()
                     + std::time::Duration::from_secs(expires_in.saturating_sub(60))
             };
@@ -283,7 +280,7 @@ pub async fn submit_sequential_chained(
             let template_transfer = common::transfer::Transfer {
                 sender: params.sender.clone(),
                 receiver: params.recipients[0].receiver.clone(),
-                amount: params.recipients[0].amount.clone(),
+                amount: params.recipients[0].amount,
                 instrument_id: params.instrument_id.clone(),
                 requested_at: chrono::Utc::now().to_rfc3339(),
                 execute_before: (chrono::Utc::now()
@@ -303,29 +300,26 @@ pub async fn submit_sequential_chained(
             };
 
             log::debug!("Fetching transfer factory context from registry (once)...");
-
-            let additional_information =
-                registry::transfer_factory::get(registry::transfer_factory::Params {
-                    registry_url: params.registry_url.clone(),
-                    decentralized_party_id: params.decentralized_party_id.clone(),
-                    request: registry::transfer_factory::Request {
-                        choice_arguments: common::transfer_factory::ChoiceArguments {
-                            expected_admin: params.decentralized_party_id.clone(),
-                            transfer: template_transfer,
-                            extra_args: common::transfer_factory::ExtraArgs {
-                                context: common::transfer_factory::Context {
-                                    values: HashMap::new(),
-                                },
-                                meta: common::transfer_factory::Meta {
-                                    values: common::transfer_factory::MetaValue {},
-                                },
+            registry::transfer_factory::get(registry::transfer_factory::Params {
+                registry_url: params.registry_url.clone(),
+                decentralized_party_id: params.decentralized_party_id.clone(),
+                request: registry::transfer_factory::Request {
+                    choice_arguments: common::transfer_factory::ChoiceArguments {
+                        expected_admin: params.decentralized_party_id.clone(),
+                        transfer: template_transfer,
+                        extra_args: common::transfer_factory::ExtraArgs {
+                            context: common::transfer_factory::Context {
+                                values: HashMap::new(),
+                            },
+                            meta: common::transfer_factory::Meta {
+                                values: common::transfer_factory::MetaValue {},
                             },
                         },
-                        exclude_debug_fields: true,
                     },
-                })
-                .await?;
-            additional_information
+                    exclude_debug_fields: true,
+                },
+            })
+            .await?
         }
     };
 
@@ -421,7 +415,7 @@ pub async fn submit_sequential_chained(
         let transfer = common::transfer::Transfer {
             sender: params.sender.clone(),
             receiver: recipient.receiver.clone(),
-            amount: recipient.amount.clone(),
+            amount: recipient.amount,
             instrument_id: params.instrument_id.clone(),
             requested_at: chrono::Utc::now().to_rfc3339(),
             execute_before: (chrono::Utc::now() + chrono::Duration::hours(168)).to_rfc3339(),
@@ -626,26 +620,23 @@ fn parse_transfer_response_value(
     let mut transfer_offer_cid = None;
 
     for event in events {
-        if let Some(exercised) = crate::event_helpers::as_exercised_event(event) {
-            if exercised.choice == common::consts::CHOICE_TRANSFER_FACTORY_TRANSFER {
-                if let Some(Some(result)) = exercised.exercise_result.as_ref() {
-                    // Extract senderChangeCids
-                    if let Some(change_array) = result["senderChangeCids"].as_array() {
-                        sender_change_cids = Some(
-                            change_array
-                                .iter()
-                                .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                                .collect::<Vec<String>>(),
-                        );
-                    }
+        if let Some(exercised) = crate::event_helpers::as_exercised_event(event)
+            && exercised.choice == common::consts::CHOICE_TRANSFER_FACTORY_TRANSFER
+            && let Some(Some(result)) = exercised.exercise_result.as_ref()
+        {
+            // Extract senderChangeCids
+            if let Some(change_array) = result["senderChangeCids"].as_array() {
+                sender_change_cids = Some(
+                    change_array
+                        .iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect::<Vec<String>>(),
+                );
+            }
 
-                    // Extract transfer offer CID from the output (Daml-encoded payload)
-                    if let Some(output) =
-                        result["output"]["value"]["transferInstructionCid"].as_str()
-                    {
-                        transfer_offer_cid = Some(output.to_string());
-                    }
-                }
+            // Extract transfer offer CID from the output (Daml-encoded payload)
+            if let Some(output) = result["output"]["value"]["transferInstructionCid"].as_str() {
+                transfer_offer_cid = Some(output.to_string());
             }
         }
     }

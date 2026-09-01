@@ -189,11 +189,11 @@ fn parse_split_response(
             if exercised.choice != common::consts::CHOICE_TRANSFER_FACTORY_TRANSFER {
                 continue;
             }
-            if let Some(Some(result)) = exercised.exercise_result.as_ref() {
-                if result.is_object() {
-                    exercise_result = Some(result);
-                    break;
-                }
+            if let Some(Some(result)) = exercised.exercise_result.as_ref()
+                && result.is_object()
+            {
+                exercise_result = Some(result);
+                break;
             }
         }
     }

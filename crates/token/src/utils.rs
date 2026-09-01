@@ -4,12 +4,11 @@ use common::decimal::DamlDecimal;
 pub fn extract_amount(contract: &ledger::models::JsActiveContract) -> Option<DamlDecimal> {
     if let Some(views) = &contract.created_event.interface_views {
         for view in views {
-            if let Some(Some(value)) = &view.view_value {
-                if let Some(amount_value) = value.get("amount") {
-                    if let Some(amount_str) = amount_value.as_str() {
-                        return DamlDecimal::parse(amount_str).ok();
-                    }
-                }
+            if let Some(Some(value)) = &view.view_value
+                && let Some(amount_value) = value.get("amount")
+                && let Some(amount_str) = amount_value.as_str()
+            {
+                return DamlDecimal::parse(amount_str).ok();
             }
         }
     }
@@ -101,63 +100,63 @@ async fn fetch_transfers(
     let filtered: Vec<ledger::models::JsActiveContract> = result
         .into_iter()
         .filter(|ac| {
-            if let Some(create_arg) = &ac.created_event.create_argument {
-                if let Some(transfer) = create_arg.get("transfer") {
-                    // Check if instrumentId matches the requested instrument
-                    let is_instrument = if let Some(instrument) = transfer.get("instrumentId") {
-                        let id_ok = if let Some(id) = instrument.get("id") {
-                            if let Some(id_str) = id.as_str() {
-                                id_str == instrument_id.id
-                            } else {
-                                false
-                            }
+            if let Some(create_arg) = &ac.created_event.create_argument
+                && let Some(transfer) = create_arg.get("transfer")
+            {
+                // Check if instrumentId matches the requested instrument
+                let is_instrument = if let Some(instrument) = transfer.get("instrumentId") {
+                    let id_ok = if let Some(id) = instrument.get("id") {
+                        if let Some(id_str) = id.as_str() {
+                            id_str == instrument_id.id
                         } else {
                             false
-                        };
-                        let admin_ok = if let Some(admin) = instrument.get("admin") {
-                            if let Some(admin_str) = admin.as_str() {
-                                admin_str == instrument_id.admin
-                            } else {
-                                false
-                            }
-                        } else {
-                            false
-                        };
-                        id_ok && admin_ok
+                        }
                     } else {
                         false
                     };
-
-                    // Check role based on direction
-                    let matches_direction = match direction {
-                        TransferDirection::Incoming => {
-                            // Check if we are the receiver
-                            if let Some(receiver) = transfer.get("receiver") {
-                                if let Some(receiver_str) = receiver.as_str() {
-                                    receiver_str == party
-                                } else {
-                                    false
-                                }
-                            } else {
-                                false
-                            }
+                    let admin_ok = if let Some(admin) = instrument.get("admin") {
+                        if let Some(admin_str) = admin.as_str() {
+                            admin_str == instrument_id.admin
+                        } else {
+                            false
                         }
-                        TransferDirection::Outgoing => {
-                            // Check if we are the sender
-                            if let Some(sender) = transfer.get("sender") {
-                                if let Some(sender_str) = sender.as_str() {
-                                    sender_str == party
-                                } else {
-                                    false
-                                }
-                            } else {
-                                false
-                            }
-                        }
+                    } else {
+                        false
                     };
+                    id_ok && admin_ok
+                } else {
+                    false
+                };
 
-                    return is_instrument && matches_direction;
-                }
+                // Check role based on direction
+                let matches_direction = match direction {
+                    TransferDirection::Incoming => {
+                        // Check if we are the receiver
+                        if let Some(receiver) = transfer.get("receiver") {
+                            if let Some(receiver_str) = receiver.as_str() {
+                                receiver_str == party
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        }
+                    }
+                    TransferDirection::Outgoing => {
+                        // Check if we are the sender
+                        if let Some(sender) = transfer.get("sender") {
+                            if let Some(sender_str) = sender.as_str() {
+                                sender_str == party
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        }
+                    }
+                };
+
+                return is_instrument && matches_direction;
             }
             false
         })

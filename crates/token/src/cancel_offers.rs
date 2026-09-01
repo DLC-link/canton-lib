@@ -404,7 +404,7 @@ pub async fn withdraw_all(params: WithdrawAllParams) -> Result<WithdrawAllResult
     // Build and submit commands in batches of 5
     const BATCH_SIZE: usize = 5;
     let total_transfers = pending_transfers.len();
-    let num_batches = (total_transfers + BATCH_SIZE - 1) / BATCH_SIZE;
+    let num_batches = total_transfers.div_ceil(BATCH_SIZE);
 
     log::debug!(
         "\nSubmitting {} withdrawals in {} batch(es) of up to {}...",
@@ -454,16 +454,16 @@ pub async fn withdraw_all(params: WithdrawAllParams) -> Result<WithdrawAllResult
             let mut amount = None;
             let mut receiver = None;
 
-            if let Some(create_arg) = &transfer.created_event.create_argument {
-                if let Some(transfer_data) = create_arg.get("transfer") {
-                    if let Some(amt) = transfer_data.get("amount") {
-                        amount = amt.as_str().map(|s| s.to_string());
-                        log::debug!("     Amount: {}", amt);
-                    }
-                    if let Some(rcvr) = transfer_data.get("receiver") {
-                        receiver = rcvr.as_str().map(|s| s.to_string());
-                        log::debug!("     To: {}", rcvr.as_str().unwrap_or("unknown"));
-                    }
+            if let Some(create_arg) = &transfer.created_event.create_argument
+                && let Some(transfer_data) = create_arg.get("transfer")
+            {
+                if let Some(amt) = transfer_data.get("amount") {
+                    amount = amt.as_str().map(|s| s.to_string());
+                    log::debug!("     Amount: {}", amt);
+                }
+                if let Some(rcvr) = transfer_data.get("receiver") {
+                    receiver = rcvr.as_str().map(|s| s.to_string());
+                    log::debug!("     To: {}", rcvr.as_str().unwrap_or("unknown"));
                 }
             }
 

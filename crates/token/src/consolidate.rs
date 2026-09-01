@@ -164,7 +164,7 @@ pub async fn consolidate_utxos(params: ConsolidateParams) -> Result<Vec<String>,
     let holdings: Vec<Holding> = contracts
         .iter()
         .filter(|c| input_holding_cids.contains(&c.created_event.contract_id))
-        .map(|c| Holding::from_active_contract(c))
+        .map(Holding::from_active_contract)
         .collect::<Result<Vec<_>, _>>()?;
 
     let total_amount: DamlDecimal = holdings.iter().map(|h| h.amount).sum();
