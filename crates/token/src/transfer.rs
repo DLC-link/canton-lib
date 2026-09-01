@@ -621,8 +621,6 @@ fn generate_unique_reference(reference_base: &str, sender: &str, receiver: &str)
 /// exactly `[sender.owner]` on the factory choice, checked at
 /// `AllocationFactory.daml:774`.
 pub mod v2 {
-    // None of these four has a user until Step 5, so this step emits
-    // `unused_imports`. `cargo test` still passes; do not run clippy until Step 7.
     use super::{SequentialChainedResult, TokenState, TransferResult, TransferResultCallback};
     use crate::utils::{build_submission, ensure_reason_meta, require_owner, submit_and_wait};
     use std::collections::HashMap;
@@ -742,8 +740,8 @@ pub mod v2 {
                 party: sender.clone(),
                 access_token: params.access_token.clone(),
                 instrument_id: params.transfer.instrument_id.clone(),
-                // Task 4a. The inputs must come from the sender's own account,
-                // not from every label the sender owns.
+                // The inputs must come from the sender's own account, not from
+                // every label the sender owns.
                 account: Some(params.transfer.sender.clone()),
             })
             .await?;

@@ -393,8 +393,9 @@ pub async fn check_and_consolidate(
 
 /// Token Standard V2 forms of the consolidation entry points.
 ///
-/// `get_utxo_count` stays version-neutral, but Task 4a gives it the same
-/// registry, so these entry points call it with the account's derived owner.
+/// `get_utxo_count` serves both versions. It takes an optional account
+/// filter, and these entry points pass the caller's account, so the count
+/// covers exactly the holdings the consolidation will merge.
 pub mod v2 {
     use crate::split::v2::self_transfer;
     use crate::transfer::v2::{factory_command, fetch_factory};
@@ -435,7 +436,7 @@ pub mod v2 {
                 party: owner.clone(),
                 access_token: params.access_token.clone(),
                 instrument_id: params.instrument_id.clone(),
-                // Task 4a. Consolidate only within the caller's own account.
+                // Consolidate only within the caller's own account.
                 account: Some(params.account.clone()),
             })
             .await?;
@@ -541,7 +542,7 @@ pub mod v2 {
             instrument_id: params.instrument_id.clone(),
             ledger_host: params.ledger_host.clone(),
             access_token: params.access_token.clone(),
-            // Task 4a. Count the same holdings the consolidation will merge.
+            // Count the same holdings the consolidation will merge.
             // Passing `None` here would compare a whole-party count against a
             // per-account consolidation, and the threshold would fire wrongly.
             account: Some(params.account.clone()),

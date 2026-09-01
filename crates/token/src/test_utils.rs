@@ -43,8 +43,6 @@ use std::sync::Mutex;
 
 pub(crate) static SERIAL_LOCK: Mutex<()> = Mutex::new(());
 
-const REFERENCE_META_KEY: &str = "splice.lfdecentralizedtrust.org/reference";
-
 /// All configuration the integration tests need: the env-provided
 /// values plus the hardcoded devnet registry URL.
 pub(crate) struct IntegrationTestState {
@@ -130,7 +128,7 @@ fn offer_reference(offer: &JsActiveContract) -> Option<&str> {
         .get("transfer")?
         .get("meta")?
         .get("values")?
-        .get(REFERENCE_META_KEY)?
+        .get(crate::utils::REFERENCE_META_KEY)?
         .as_str()
 }
 

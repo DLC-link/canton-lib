@@ -704,10 +704,9 @@ mod v2_tests {
 
     #[test]
     fn v2_submission_envelope_matches_the_pinned_shape() {
-        // Spec 8.2 asks for the envelope pin repeated on one V2 operation.
-        // Task 4 pinned it against a V1 command; this asserts the same
-        // envelope fields around a V2 one, so a V2 path cannot quietly grow
-        // an extra top-level field.
+        // `utils::helper_tests` pins the envelope against a V1 command. This
+        // asserts the same envelope fields around a V2 one, so a V2 path
+        // cannot quietly grow an extra top-level field.
         let context = context();
         let actors = vec!["bob::1220cd".to_string()];
         let submission = crate::utils::build_submission(

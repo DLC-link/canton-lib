@@ -165,11 +165,8 @@ impl TokenClient {
 
         let meta = params.reference.map(|r| {
             let mut values = HashMap::new();
-            values.insert(
-                "splice.lfdecentralizedtrust.org/reason".to_string(),
-                String::new(),
-            );
-            values.insert("splice.lfdecentralizedtrust.org/reference".to_string(), r);
+            values.insert(utils::REASON_META_KEY.to_string(), String::new());
+            values.insert(utils::REFERENCE_META_KEY.to_string(), r);
             common::transfer::Meta {
                 values: Some(values),
             }

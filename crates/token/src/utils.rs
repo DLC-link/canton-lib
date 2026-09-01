@@ -177,9 +177,7 @@ pub(crate) const REFERENCE_META_KEY: &str = "splice.lfdecentralizedtrust.org/ref
 /// and it supplies the `actors` the registry checks. So a `None` owner is a
 /// caller error, reported before any network call.
 ///
-/// No V1 path holds an `Account`, so this helper has no caller until the V2
-/// entry points land; the unit tests below are its only use today.
-#[allow(dead_code)]
+/// No V1 path holds an `Account`, so no V1 caller can reach this error.
 pub(crate) fn require_owner(
     account: &common::transfer::v2::Account,
     field: &str,

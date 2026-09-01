@@ -160,7 +160,7 @@ pub mod v2 {
             party: sender.clone(),
             access_token,
             instrument_id: params.instrument_id.clone(),
-            // Task 4a. Distribute funds only from the sender's own account.
+            // Distribute funds only from the sender's own account.
             account: Some(params.sender.clone()),
         })
         .await?;
