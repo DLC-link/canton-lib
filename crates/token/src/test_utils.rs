@@ -84,12 +84,22 @@ impl IntegrationTestState {
     }
 
     pub(crate) async fn client_for(&self, party: &str) -> TokenClient {
+        self.client_for_version(party, common::TokenStandardVersion::V1)
+            .await
+    }
+
+    pub(crate) async fn client_for_version(
+        &self,
+        party: &str,
+        version: common::TokenStandardVersion,
+    ) -> TokenClient {
         TokenClient::connect(TokenClientConfig {
             ledger_host: self.ledger_host.clone(),
             registry_url: self.registry_url.clone(),
             instrument: self.instrument.clone(),
             party: party.to_string(),
             keycloak: self.keycloak.clone(),
+            version,
         })
         .await
         .expect("failed to connect TokenClient")

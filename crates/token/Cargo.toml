@@ -29,3 +29,4 @@ registry = { workspace = true }
 [dev-dependencies]
 dotenvy = { workspace = true }
 env_logger = { workspace = true }
+wiremock = { workspace = true }

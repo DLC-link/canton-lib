@@ -37,6 +37,11 @@ pub struct TokenClientConfig {
     /// The acting party (sender/receiver of operations).
     pub party: String,
     pub keycloak: KeycloakConfig,
+    /// Which registry API this client's calls use. `TokenStandardVersion::V1`
+    /// reproduces the behaviour of every release before 0.7.0. There is no
+    /// struct-level default: adding this field means every `TokenClientConfig`
+    /// literal must name it.
+    pub version: common::TokenStandardVersion,
 }
 
 /// Parameters for [`TokenClient::send`].
@@ -109,6 +114,19 @@ impl TokenClient {
         self.config.instrument.admin.clone()
     }
 
+    /// The acting party as a basic account: no provider, empty id.
+    ///
+    /// The V2 entry points take accounts. This client is bound to one party,
+    /// so every account it needs is that party's basic account.
+    fn account(&self) -> common::transfer::v2::Account {
+        Self::account_for(&self.config)
+    }
+
+    /// [`Self::account`] without a connected client, so a unit test can reach it.
+    pub(crate) fn account_for(config: &TokenClientConfig) -> common::transfer::v2::Account {
+        common::transfer::v2::Account::basic(config.party.clone())
+    }
+
     async fn fresh_token(&mut self) -> Result<String, String> {
         self.token.get_fresh_token().await
     }
@@ -157,101 +175,208 @@ impl TokenClient {
             }
         });
 
-        transfer::submit(transfer::Params {
-            transfer: common::transfer::Transfer {
-                sender: self.config.party.clone(),
-                receiver: params.receiver,
-                amount: params.amount,
-                instrument_id: self.config.instrument.clone(),
-                requested_at: chrono::Utc::now().to_rfc3339(),
-                execute_before: (chrono::Utc::now()
-                    + params
-                        .execute_before
-                        .unwrap_or(chrono::Duration::hours(168)))
-                .to_rfc3339(),
-                input_holding_cids: params.input_holding_cids,
-                meta,
-            },
-            ledger_host: self.config.ledger_host.clone(),
-            access_token,
-            registry_url: self.config.registry_url.clone(),
-            decentralized_party_id: self.admin(),
-        })
-        .await
+        let requested_at = chrono::Utc::now().to_rfc3339();
+        let execute_before = (chrono::Utc::now()
+            + params
+                .execute_before
+                .unwrap_or(chrono::Duration::hours(168)))
+        .to_rfc3339();
+
+        match self.config.version {
+            common::TokenStandardVersion::V1 => {
+                transfer::submit(transfer::Params {
+                    transfer: common::transfer::Transfer {
+                        sender: self.config.party.clone(),
+                        receiver: params.receiver,
+                        amount: params.amount,
+                        instrument_id: self.config.instrument.clone(),
+                        requested_at,
+                        execute_before,
+                        input_holding_cids: params.input_holding_cids,
+                        meta,
+                    },
+                    ledger_host: self.config.ledger_host.clone(),
+                    access_token,
+                    registry_url: self.config.registry_url.clone(),
+                    decentralized_party_id: self.admin(),
+                })
+                .await
+            }
+            common::TokenStandardVersion::V2 => {
+                transfer::v2::submit(transfer::v2::Params {
+                    transfer: common::transfer::v2::Transfer {
+                        sender: self.account(),
+                        receiver: common::transfer::v2::Account::basic(params.receiver),
+                        amount: params.amount,
+                        instrument_id: self.config.instrument.clone(),
+                        requested_at,
+                        execute_before,
+                        input_holding_cids: params.input_holding_cids,
+                        meta,
+                    },
+                    ledger_host: self.config.ledger_host.clone(),
+                    access_token,
+                    registry_url: self.config.registry_url.clone(),
+                    decentralized_party_id: self.admin(),
+                })
+                .await
+            }
+        }
     }
 
     /// Accept one incoming transfer offer by contract id.
     pub async fn accept(&mut self, transfer_offer_cid: String) -> Result<(), String> {
         let access_token = self.fresh_token().await?;
-        accept::submit(accept::Params {
-            transfer_offer_contract_id: transfer_offer_cid,
-            receiver_party: self.config.party.clone(),
-            ledger_host: self.config.ledger_host.clone(),
-            access_token,
-            registry_url: self.config.registry_url.clone(),
-            decentralized_party_id: self.admin(),
-        })
-        .await
+        match self.config.version {
+            common::TokenStandardVersion::V1 => {
+                accept::submit(accept::Params {
+                    transfer_offer_contract_id: transfer_offer_cid,
+                    receiver_party: self.config.party.clone(),
+                    ledger_host: self.config.ledger_host.clone(),
+                    access_token,
+                    registry_url: self.config.registry_url.clone(),
+                    decentralized_party_id: self.admin(),
+                })
+                .await
+            }
+            common::TokenStandardVersion::V2 => {
+                accept::v2::submit(accept::v2::Params {
+                    transfer_instruction_id: transfer_offer_cid,
+                    receiver_party: self.config.party.clone(),
+                    ledger_host: self.config.ledger_host.clone(),
+                    access_token,
+                    registry_url: self.config.registry_url.clone(),
+                    decentralized_party_id: self.admin(),
+                })
+                .await
+            }
+        }
     }
 
     /// Accept all pending incoming transfers of this token.
     pub async fn accept_all(&mut self) -> Result<accept::AcceptAllResult, String> {
-        accept::accept_all(accept::AcceptAllParams {
-            receiver_party: self.config.party.clone(),
-            instrument_id: self.config.instrument.clone(),
-            ledger_host: self.config.ledger_host.clone(),
-            registry_url: self.config.registry_url.clone(),
-            decentralized_party_id: self.admin(),
-            keycloak_client_id: self.config.keycloak.client_id.clone(),
-            keycloak_username: self.config.keycloak.username.clone(),
-            keycloak_password: self.config.keycloak.password.clone(),
-            keycloak_url: self.config.keycloak.url.clone(),
-        })
-        .await
+        match self.config.version {
+            common::TokenStandardVersion::V1 => {
+                accept::accept_all(accept::AcceptAllParams {
+                    receiver_party: self.config.party.clone(),
+                    instrument_id: self.config.instrument.clone(),
+                    ledger_host: self.config.ledger_host.clone(),
+                    registry_url: self.config.registry_url.clone(),
+                    decentralized_party_id: self.admin(),
+                    keycloak_client_id: self.config.keycloak.client_id.clone(),
+                    keycloak_username: self.config.keycloak.username.clone(),
+                    keycloak_password: self.config.keycloak.password.clone(),
+                    keycloak_url: self.config.keycloak.url.clone(),
+                })
+                .await
+            }
+            common::TokenStandardVersion::V2 => {
+                accept::v2::accept_all(accept::v2::AcceptAllParams {
+                    receiver_party: self.config.party.clone(),
+                    instrument_id: self.config.instrument.clone(),
+                    ledger_host: self.config.ledger_host.clone(),
+                    registry_url: self.config.registry_url.clone(),
+                    decentralized_party_id: self.admin(),
+                    keycloak_client_id: self.config.keycloak.client_id.clone(),
+                    keycloak_username: self.config.keycloak.username.clone(),
+                    keycloak_password: self.config.keycloak.password.clone(),
+                    keycloak_url: self.config.keycloak.url.clone(),
+                })
+                .await
+            }
+        }
     }
 
     /// Reject one incoming transfer offer by contract id.
     pub async fn reject(&mut self, transfer_offer_cid: String) -> Result<(), String> {
         let access_token = self.fresh_token().await?;
-        reject::submit(reject::Params {
-            transfer_offer_contract_id: transfer_offer_cid,
-            receiver_party: self.config.party.clone(),
-            ledger_host: self.config.ledger_host.clone(),
-            access_token,
-            registry_url: self.config.registry_url.clone(),
-            decentralized_party_id: self.admin(),
-        })
-        .await
+        match self.config.version {
+            common::TokenStandardVersion::V1 => {
+                reject::submit(reject::Params {
+                    transfer_offer_contract_id: transfer_offer_cid,
+                    receiver_party: self.config.party.clone(),
+                    ledger_host: self.config.ledger_host.clone(),
+                    access_token,
+                    registry_url: self.config.registry_url.clone(),
+                    decentralized_party_id: self.admin(),
+                })
+                .await
+            }
+            common::TokenStandardVersion::V2 => {
+                reject::v2::submit(reject::v2::Params {
+                    transfer_instruction_id: transfer_offer_cid,
+                    receiver_party: self.config.party.clone(),
+                    ledger_host: self.config.ledger_host.clone(),
+                    access_token,
+                    registry_url: self.config.registry_url.clone(),
+                    decentralized_party_id: self.admin(),
+                })
+                .await
+            }
+        }
     }
 
     /// Cancel (withdraw) one outgoing transfer offer by contract id.
     pub async fn cancel_offer(&mut self, transfer_offer_cid: String) -> Result<(), String> {
         let access_token = self.fresh_token().await?;
-        cancel_offers::submit(cancel_offers::Params {
-            transfer_offer_contract_id: transfer_offer_cid,
-            sender_party: self.config.party.clone(),
-            ledger_host: self.config.ledger_host.clone(),
-            access_token,
-            registry_url: self.config.registry_url.clone(),
-            decentralized_party_id: self.admin(),
-        })
-        .await
+        match self.config.version {
+            common::TokenStandardVersion::V1 => {
+                cancel_offers::submit(cancel_offers::Params {
+                    transfer_offer_contract_id: transfer_offer_cid,
+                    sender_party: self.config.party.clone(),
+                    ledger_host: self.config.ledger_host.clone(),
+                    access_token,
+                    registry_url: self.config.registry_url.clone(),
+                    decentralized_party_id: self.admin(),
+                })
+                .await
+            }
+            common::TokenStandardVersion::V2 => {
+                cancel_offers::v2::submit(cancel_offers::v2::Params {
+                    transfer_instruction_id: transfer_offer_cid,
+                    sender_party: self.config.party.clone(),
+                    ledger_host: self.config.ledger_host.clone(),
+                    access_token,
+                    registry_url: self.config.registry_url.clone(),
+                    decentralized_party_id: self.admin(),
+                })
+                .await
+            }
+        }
     }
 
     /// Cancel all pending outgoing transfers of this token.
     pub async fn cancel_all_offers(&mut self) -> Result<cancel_offers::WithdrawAllResult, String> {
-        cancel_offers::withdraw_all(cancel_offers::WithdrawAllParams {
-            sender_party: self.config.party.clone(),
-            instrument_id: self.config.instrument.clone(),
-            ledger_host: self.config.ledger_host.clone(),
-            registry_url: self.config.registry_url.clone(),
-            decentralized_party_id: self.admin(),
-            keycloak_client_id: self.config.keycloak.client_id.clone(),
-            keycloak_username: self.config.keycloak.username.clone(),
-            keycloak_password: self.config.keycloak.password.clone(),
-            keycloak_url: self.config.keycloak.url.clone(),
-        })
-        .await
+        match self.config.version {
+            common::TokenStandardVersion::V1 => {
+                cancel_offers::withdraw_all(cancel_offers::WithdrawAllParams {
+                    sender_party: self.config.party.clone(),
+                    instrument_id: self.config.instrument.clone(),
+                    ledger_host: self.config.ledger_host.clone(),
+                    registry_url: self.config.registry_url.clone(),
+                    decentralized_party_id: self.admin(),
+                    keycloak_client_id: self.config.keycloak.client_id.clone(),
+                    keycloak_username: self.config.keycloak.username.clone(),
+                    keycloak_password: self.config.keycloak.password.clone(),
+                    keycloak_url: self.config.keycloak.url.clone(),
+                })
+                .await
+            }
+            common::TokenStandardVersion::V2 => {
+                cancel_offers::v2::withdraw_all(cancel_offers::v2::WithdrawAllParams {
+                    sender_party: self.config.party.clone(),
+                    instrument_id: self.config.instrument.clone(),
+                    ledger_host: self.config.ledger_host.clone(),
+                    registry_url: self.config.registry_url.clone(),
+                    decentralized_party_id: self.admin(),
+                    keycloak_client_id: self.config.keycloak.client_id.clone(),
+                    keycloak_username: self.config.keycloak.username.clone(),
+                    keycloak_password: self.config.keycloak.password.clone(),
+                    keycloak_url: self.config.keycloak.url.clone(),
+                })
+                .await
+            }
+        }
     }
 
     /// Pending incoming transfer offers of this token (party is receiver).
@@ -285,16 +410,32 @@ impl TokenClient {
     /// Merge all holdings into a single UTXO. Returns the resulting holding CIDs.
     pub async fn consolidate(&mut self) -> Result<Vec<String>, String> {
         let access_token = self.fresh_token().await?;
-        consolidate::consolidate_utxos(consolidate::ConsolidateParams {
-            party: self.config.party.clone(),
-            instrument_id: self.config.instrument.clone(),
-            input_holding_cids: None,
-            ledger_host: self.config.ledger_host.clone(),
-            access_token,
-            registry_url: self.config.registry_url.clone(),
-            decentralized_party_id: self.admin(),
-        })
-        .await
+        match self.config.version {
+            common::TokenStandardVersion::V1 => {
+                consolidate::consolidate_utxos(consolidate::ConsolidateParams {
+                    party: self.config.party.clone(),
+                    instrument_id: self.config.instrument.clone(),
+                    input_holding_cids: None,
+                    ledger_host: self.config.ledger_host.clone(),
+                    access_token,
+                    registry_url: self.config.registry_url.clone(),
+                    decentralized_party_id: self.admin(),
+                })
+                .await
+            }
+            common::TokenStandardVersion::V2 => {
+                consolidate::v2::consolidate_utxos(consolidate::v2::ConsolidateParams {
+                    account: self.account(),
+                    instrument_id: self.config.instrument.clone(),
+                    input_holding_cids: None,
+                    ledger_host: self.config.ledger_host.clone(),
+                    access_token,
+                    registry_url: self.config.registry_url.clone(),
+                    decentralized_party_id: self.admin(),
+                })
+                .await
+            }
+        }
     }
 
     /// Consolidate only when the UTXO count reaches `threshold`.
@@ -303,16 +444,32 @@ impl TokenClient {
         threshold: usize,
     ) -> Result<consolidate::ConsolidationResult, String> {
         let access_token = self.fresh_token().await?;
-        consolidate::check_and_consolidate(consolidate::CheckConsolidateParams {
-            party: self.config.party.clone(),
-            instrument_id: self.config.instrument.clone(),
-            threshold,
-            ledger_host: self.config.ledger_host.clone(),
-            access_token,
-            registry_url: self.config.registry_url.clone(),
-            decentralized_party_id: self.admin(),
-        })
-        .await
+        match self.config.version {
+            common::TokenStandardVersion::V1 => {
+                consolidate::check_and_consolidate(consolidate::CheckConsolidateParams {
+                    party: self.config.party.clone(),
+                    instrument_id: self.config.instrument.clone(),
+                    threshold,
+                    ledger_host: self.config.ledger_host.clone(),
+                    access_token,
+                    registry_url: self.config.registry_url.clone(),
+                    decentralized_party_id: self.admin(),
+                })
+                .await
+            }
+            common::TokenStandardVersion::V2 => {
+                consolidate::v2::check_and_consolidate(consolidate::v2::CheckConsolidateParams {
+                    account: self.account(),
+                    instrument_id: self.config.instrument.clone(),
+                    threshold,
+                    ledger_host: self.config.ledger_host.clone(),
+                    access_token,
+                    registry_url: self.config.registry_url.clone(),
+                    decentralized_party_id: self.admin(),
+                })
+                .await
+            }
+        }
     }
 
     /// Split holdings into the given amounts plus change.
@@ -322,27 +479,63 @@ impl TokenClient {
     /// can complete partially; the [`split::Error`] carries the holdings
     /// created before the failure.
     pub async fn split(&mut self, params: SplitParams) -> Result<split::SplitResult, split::Error> {
-        let input_holding_cids = match params.input_holding_cids {
-            Some(cids) => cids,
-            None => self
-                .holdings()
-                .await?
-                .into_iter()
-                .map(|c| c.created_event.contract_id)
-                .collect(),
-        };
-        let access_token = self.fresh_token().await?;
-        split::submit(split::Params {
-            party: self.config.party.clone(),
-            amounts: params.amounts,
-            instrument_id: self.config.instrument.clone(),
-            input_holding_cids,
-            ledger_host: self.config.ledger_host.clone(),
-            access_token,
-            registry_url: self.config.registry_url.clone(),
-            decentralized_party_id: self.admin(),
-        })
-        .await
+        match self.config.version {
+            common::TokenStandardVersion::V1 => {
+                let input_holding_cids = match params.input_holding_cids {
+                    Some(cids) => cids,
+                    None => self
+                        .holdings()
+                        .await?
+                        .into_iter()
+                        .map(|c| c.created_event.contract_id)
+                        .collect(),
+                };
+                let access_token = self.fresh_token().await?;
+                split::submit(split::Params {
+                    party: self.config.party.clone(),
+                    amounts: params.amounts,
+                    instrument_id: self.config.instrument.clone(),
+                    input_holding_cids,
+                    ledger_host: self.config.ledger_host.clone(),
+                    access_token,
+                    registry_url: self.config.registry_url.clone(),
+                    decentralized_party_id: self.admin(),
+                })
+                .await
+            }
+            common::TokenStandardVersion::V2 => {
+                let account = self.account();
+                let access_token = self.fresh_token().await?;
+                // Not `self.holdings()`: that passes `account: None`, and
+                // handing label-blind cids to a basic-account self-transfer
+                // would sweep a labelled holding into it. Decision 11.
+                let input_holding_cids = match params.input_holding_cids {
+                    Some(cids) => cids,
+                    None => active_contracts::get(active_contracts::Params {
+                        ledger_host: self.config.ledger_host.clone(),
+                        party: self.config.party.clone(),
+                        access_token: access_token.clone(),
+                        instrument_id: self.config.instrument.clone(),
+                        account: Some(account.clone()),
+                    })
+                    .await?
+                    .into_iter()
+                    .map(|c| c.created_event.contract_id)
+                    .collect(),
+                };
+                split::v2::submit(split::v2::Params {
+                    account,
+                    amounts: params.amounts,
+                    instrument_id: self.config.instrument.clone(),
+                    input_holding_cids,
+                    ledger_host: self.config.ledger_host.clone(),
+                    access_token,
+                    registry_url: self.config.registry_url.clone(),
+                    decentralized_party_id: self.admin(),
+                })
+                .await
+            }
+        }
     }
 
     /// Distribute to many recipients with sequential chained transfers.
@@ -351,21 +544,402 @@ impl TokenClient {
         &mut self,
         params: DistributeParams,
     ) -> Result<transfer::SequentialChainedResult, String> {
-        distribute::submit(distribute::Params {
-            recipients: params.recipients,
-            sender: self.config.party.clone(),
-            instrument_id: self.config.instrument.clone(),
-            ledger_host: self.config.ledger_host.clone(),
-            registry_url: self.config.registry_url.clone(),
-            decentralized_party_id: self.admin(),
-            keycloak_client_id: self.config.keycloak.client_id.clone(),
-            keycloak_username: self.config.keycloak.username.clone(),
-            keycloak_password: self.config.keycloak.password.clone(),
-            keycloak_url: self.config.keycloak.url.clone(),
-            reference_base: params.reference_base,
-            on_transfer_complete: params.on_transfer_complete,
+        match self.config.version {
+            common::TokenStandardVersion::V1 => {
+                distribute::submit(distribute::Params {
+                    recipients: params.recipients,
+                    sender: self.config.party.clone(),
+                    instrument_id: self.config.instrument.clone(),
+                    ledger_host: self.config.ledger_host.clone(),
+                    registry_url: self.config.registry_url.clone(),
+                    decentralized_party_id: self.admin(),
+                    keycloak_client_id: self.config.keycloak.client_id.clone(),
+                    keycloak_username: self.config.keycloak.username.clone(),
+                    keycloak_password: self.config.keycloak.password.clone(),
+                    keycloak_url: self.config.keycloak.url.clone(),
+                    reference_base: params.reference_base,
+                    on_transfer_complete: params.on_transfer_complete,
+                })
+                .await
+            }
+            common::TokenStandardVersion::V2 => {
+                let recipients = params
+                    .recipients
+                    .into_iter()
+                    .map(|r| distribute::v2::Recipient {
+                        receiver: common::transfer::v2::Account::basic(r.receiver),
+                        amount: r.amount,
+                    })
+                    .collect();
+                distribute::v2::submit(distribute::v2::Params {
+                    recipients,
+                    sender: self.account(),
+                    instrument_id: self.config.instrument.clone(),
+                    ledger_host: self.config.ledger_host.clone(),
+                    registry_url: self.config.registry_url.clone(),
+                    decentralized_party_id: self.admin(),
+                    keycloak_client_id: self.config.keycloak.client_id.clone(),
+                    keycloak_username: self.config.keycloak.username.clone(),
+                    keycloak_password: self.config.keycloak.password.clone(),
+                    keycloak_url: self.config.keycloak.url.clone(),
+                    reference_base: params.reference_base,
+                    on_transfer_complete: params.on_transfer_complete,
+                })
+                .await
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod dispatch_tests {
+    use super::*;
+    use wiremock::matchers::{method, path, path_regex};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    const PARTY: &str = "alice::1220ab";
+    const ADMIN: &str = "admin::1220ef";
+
+    // --- canned third-party responses ---
+
+    fn keycloak_token() -> serde_json::Value {
+        serde_json::json!({
+            "access_token": "test-access-token",
+            "refresh_token": "test-refresh-token",
+            "expires_in": 3600
         })
-        .await
+    }
+
+    fn factory_response() -> serde_json::Value {
+        serde_json::json!({
+            "factoryId": "00factory",
+            "transferKind": "offer",
+            "choiceContext": {
+                "choiceContextData": { "values": {} },
+                "disclosedContracts": []
+            }
+        })
+    }
+
+    fn choice_context() -> serde_json::Value {
+        serde_json::json!({
+            "choiceContextData": { "values": {} },
+            "disclosedContracts": []
+        })
+    }
+
+    /// A server that answers Keycloak and every registry route, and 404s the
+    /// rest.
+    ///
+    /// One `POST /token` mock serves both grants: `TokenState::new` sets its
+    /// expiry with `checked_sub` (`transfer.rs:106-110`), so the first
+    /// `get_fresh_token` always takes the refresh path, and `refresh` posts to
+    /// the same URL as `password` (`keycloak/src/login.rs:226`).
+    ///
+    /// The ledger submission is left unmocked and therefore fails. That is
+    /// deliberate: these tests assert what reached the registry, not what the
+    /// ledger did with it.
+    async fn stub() -> MockServer {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(keycloak_token()))
+            .mount(&server)
+            .await;
+
+        Mock::given(method("POST"))
+            .and(path_regex(r".*/transfer-factory$"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(factory_response()))
+            .mount(&server)
+            .await;
+
+        Mock::given(method("POST"))
+            .and(path_regex(r".*/choice-contexts/[a-z]+$"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(choice_context()))
+            .mount(&server)
+            .await;
+
+        server
+    }
+
+    fn config(server: &MockServer, version: common::TokenStandardVersion) -> TokenClientConfig {
+        TokenClientConfig {
+            ledger_host: server.uri(),
+            registry_url: server.uri(),
+            instrument: InstrumentId {
+                admin: ADMIN.to_string(),
+                id: "CBTC".to_string(),
+            },
+            party: PARTY.to_string(),
+            keycloak: KeycloakConfig {
+                client_id: "test-client".to_string(),
+                username: "test-user".to_string(),
+                password: "test-password".to_string(),
+                url: format!("{}/token", server.uri()),
+            },
+            version,
+        }
+    }
+
+    async fn client(server: &MockServer, version: common::TokenStandardVersion) -> TokenClient {
+        TokenClient::connect(config(server, version))
+            .await
+            .expect("connect against the stub")
+    }
+
+    /// The path and JSON body of the one registry request a call made.
+    ///
+    /// Asserting there was exactly one also catches a method that skipped the
+    /// registry, and one that called it twice.
+    async fn registry_call(server: &MockServer) -> (String, serde_json::Value) {
+        let requests = server
+            .received_requests()
+            .await
+            .expect("wiremock records requests by default");
+        let registry: Vec<_> = requests
+            .iter()
+            .filter(|r| r.url.path().contains("/token-standard/"))
+            .collect();
+        assert_eq!(
+            registry.len(),
+            1,
+            "expected exactly one registry call, saw {}",
+            registry.len()
+        );
+        (
+            registry[0].url.path().to_string(),
+            serde_json::from_slice(&registry[0].body).expect("registry body must be JSON"),
+        )
+    }
+
+    fn dec(s: &str) -> DamlDecimal {
+        DamlDecimal::parse(s).expect("invalid decimal literal")
+    }
+
+    fn send_params() -> SendParams {
+        SendParams {
+            receiver: "bob::1220cd".to_string(),
+            amount: dec("1.0"),
+            reference: None,
+            execute_before: None,
+            // Supplied so `send` reaches its dispatch without querying the ACS,
+            // which is a websocket the stub cannot serve.
+            input_holding_cids: Some(vec!["00abc".to_string()]),
+        }
+    }
+
+    fn split_params() -> SplitParams {
+        SplitParams {
+            amounts: vec![dec("1.0")],
+            input_holding_cids: Some(vec!["00abc".to_string()]),
+        }
+    }
+
+    // --- the config field itself ---
+
+    #[test]
+    fn version_defaults_to_v1() {
+        assert_eq!(
+            common::TokenStandardVersion::default(),
+            common::TokenStandardVersion::V1,
+            "a caller that does not name a version must keep V1 behaviour"
+        );
+    }
+
+    #[tokio::test]
+    async fn account_lifts_the_config_party_to_a_basic_account() {
+        let server = stub().await;
+        assert_eq!(
+            TokenClient::account_for(&config(&server, common::TokenStandardVersion::V2)),
+            common::transfer::v2::Account::basic(PARTY)
+        );
+    }
+
+    // --- the factory path: send and split ---
+
+    #[tokio::test]
+    async fn send_dispatches_to_the_v1_factory() {
+        let server = stub().await;
+        let _ = client(&server, common::TokenStandardVersion::V1)
+            .await
+            .send(send_params())
+            .await;
+
+        let (path, body) = registry_call(&server).await;
+        assert!(
+            path.ends_with("/registry/transfer-instruction/v1/transfer-factory"),
+            "{path}"
+        );
+        let args = &body["choiceArguments"];
+        assert_eq!(args["expectedAdmin"], serde_json::json!(ADMIN));
+        assert_eq!(args["transfer"]["sender"], serde_json::json!(PARTY));
+        assert!(args["actors"].is_null(), "V1 has no actors field");
+    }
+
+    #[tokio::test]
+    async fn send_dispatches_to_the_v2_factory() {
+        let server = stub().await;
+        let _ = client(&server, common::TokenStandardVersion::V2)
+            .await
+            .send(send_params())
+            .await;
+
+        let (path, body) = registry_call(&server).await;
+        assert!(
+            path.ends_with("/registry/transfer-instruction/v2/transfer-factory"),
+            "{path}"
+        );
+        let args = &body["choiceArguments"];
+        assert!(args["expectedAdmin"].is_null(), "V2 drops expectedAdmin");
+        assert_eq!(
+            args["actors"],
+            serde_json::json!([PARTY]),
+            "the factory accepts exactly the sender's owner"
+        );
+        assert_eq!(
+            args["transfer"]["sender"],
+            serde_json::json!({ "owner": PARTY, "provider": null, "id": "" }),
+            "spec 6.1: owner and provider serialize explicitly, null included"
+        );
+        assert_eq!(
+            args["transfer"]["receiver"],
+            serde_json::json!({ "owner": "bob::1220cd", "provider": null, "id": "" })
+        );
+    }
+
+    #[tokio::test]
+    async fn split_dispatches_to_the_v1_factory() {
+        let server = stub().await;
+        let _ = client(&server, common::TokenStandardVersion::V1)
+            .await
+            .split(split_params())
+            .await;
+
+        let (path, body) = registry_call(&server).await;
+        assert!(path.contains("/transfer-instruction/v1/"), "{path}");
+        assert_eq!(
+            body["choiceArguments"]["transfer"]["sender"],
+            serde_json::json!(PARTY)
+        );
+    }
+
+    #[tokio::test]
+    async fn split_dispatches_to_the_v2_factory_as_a_self_transfer() {
+        let server = stub().await;
+        let _ = client(&server, common::TokenStandardVersion::V2)
+            .await
+            .split(split_params())
+            .await;
+
+        let (path, body) = registry_call(&server).await;
+        assert!(path.contains("/transfer-instruction/v2/"), "{path}");
+        let transfer = &body["choiceArguments"]["transfer"];
+        assert_eq!(
+            transfer["sender"], transfer["receiver"],
+            "the registry detects a merge-split by comparing whole accounts"
+        );
+    }
+
+    // --- the instruction path: accept, reject, cancel_offer ---
+    //
+    // V1 and V2 send an identical request body to these routes, so the URL is
+    // the whole signal. The body assertion pins that sameness.
+
+    #[tokio::test]
+    async fn accept_dispatches_to_the_v1_accept_route() {
+        let server = stub().await;
+        let _ = client(&server, common::TokenStandardVersion::V1)
+            .await
+            .accept("00instruction".to_string())
+            .await;
+
+        let (path, body) = registry_call(&server).await;
+        assert!(
+            path.ends_with("/transfer-instruction/v1/00instruction/choice-contexts/accept"),
+            "{path}"
+        );
+        assert_eq!(body, serde_json::json!({ "meta": { "values": "" } }));
+    }
+
+    #[tokio::test]
+    async fn accept_dispatches_to_the_v2_accept_route() {
+        let server = stub().await;
+        let _ = client(&server, common::TokenStandardVersion::V2)
+            .await
+            .accept("00instruction".to_string())
+            .await;
+
+        let (path, body) = registry_call(&server).await;
+        assert!(
+            path.ends_with("/transfer-instruction/v2/00instruction/choice-contexts/accept"),
+            "{path}"
+        );
+        assert_eq!(body, serde_json::json!({ "meta": { "values": "" } }));
+    }
+
+    #[tokio::test]
+    async fn reject_dispatches_to_the_v1_reject_route() {
+        let server = stub().await;
+        let _ = client(&server, common::TokenStandardVersion::V1)
+            .await
+            .reject("00instruction".to_string())
+            .await;
+
+        let (path, _) = registry_call(&server).await;
+        assert!(
+            path.ends_with("/transfer-instruction/v1/00instruction/choice-contexts/reject"),
+            "{path}"
+        );
+    }
+
+    #[tokio::test]
+    async fn reject_dispatches_to_the_v2_reject_route() {
+        let server = stub().await;
+        let _ = client(&server, common::TokenStandardVersion::V2)
+            .await
+            .reject("00instruction".to_string())
+            .await;
+
+        let (path, _) = registry_call(&server).await;
+        assert!(
+            path.ends_with("/transfer-instruction/v2/00instruction/choice-contexts/reject"),
+            "{path}"
+        );
+    }
+
+    #[tokio::test]
+    async fn cancel_offer_v1_fetches_the_accept_route() {
+        // Not a typo, and not a defect this change introduces. V1 fetches the
+        // accept context and then exercises withdraw against it; follow-up 1
+        // files that. This test pins the behaviour so the follow-up's fix is
+        // a visible change rather than a silent one.
+        let server = stub().await;
+        let _ = client(&server, common::TokenStandardVersion::V1)
+            .await
+            .cancel_offer("00instruction".to_string())
+            .await;
+
+        let (path, _) = registry_call(&server).await;
+        assert!(
+            path.ends_with("/transfer-instruction/v1/00instruction/choice-contexts/accept"),
+            "{path}"
+        );
+    }
+
+    #[tokio::test]
+    async fn cancel_offer_v2_fetches_the_withdraw_route() {
+        let server = stub().await;
+        let _ = client(&server, common::TokenStandardVersion::V2)
+            .await
+            .cancel_offer("00instruction".to_string())
+            .await;
+
+        let (path, _) = registry_call(&server).await;
+        assert!(
+            path.ends_with("/transfer-instruction/v2/00instruction/choice-contexts/withdraw"),
+            "{path}"
+        );
     }
 }
 
