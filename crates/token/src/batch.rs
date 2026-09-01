@@ -105,6 +105,150 @@ pub async fn submit_from_csv(params: Params) -> Result<(), String> {
     Ok(())
 }
 
+/// Token Standard V2 form of the CSV batch entry point.
+///
+/// The CSV format does not change. Each row's receiver stays a bare party,
+/// which this module lifts to a basic account. Teaching the CSV to carry
+/// account labels belongs to the account-label work.
+pub mod v2 {
+    use crate::distribute;
+
+    pub struct Params {
+        pub csv_path: String,
+        pub sender: common::transfer::v2::Account,
+        pub instrument_id: common::transfer::InstrumentId,
+        pub ledger_host: String,
+        pub registry_url: String,
+        pub decentralized_party_id: String,
+        pub keycloak_client_id: String,
+        pub keycloak_username: String,
+        pub keycloak_password: String,
+        pub keycloak_url: String,
+        pub reference_base: Option<String>,
+    }
+
+    /// Read `receiver,amount` rows, lifting each receiver to a basic account.
+    pub(crate) fn parse_recipients<R: std::io::Read>(
+        reader: R,
+    ) -> Result<Vec<distribute::v2::Recipient>, String> {
+        let mut reader = csv::Reader::from_reader(reader);
+        let mut recipients = Vec::new();
+        let mut total_amount = common::decimal::DamlDecimal::ZERO;
+
+        for result in reader.deserialize() {
+            let record: super::CsvRecord =
+                result.map_err(|e| format!("Failed to parse CSV record: {}", e))?;
+
+            let amount = common::decimal::DamlDecimal::parse(&record.amount)
+                .map_err(|e| format!("Invalid amount '{}': {}", record.amount, e))?;
+            total_amount += amount;
+
+            recipients.push(distribute::v2::Recipient {
+                receiver: common::transfer::v2::Account::basic(record.receiver),
+                amount,
+            });
+        }
+
+        if recipients.is_empty() {
+            return Err("No recipients found in CSV file".to_string());
+        }
+
+        log::debug!(
+            "Found {} recipients, total amount: {}",
+            recipients.len(),
+            total_amount
+        );
+
+        Ok(recipients)
+    }
+
+    /// Distribute to every recipient in a CSV file.
+    pub async fn submit_from_csv(params: Params) -> Result<(), String> {
+        log::debug!("Reading CSV from: {}", params.csv_path);
+        let file = std::fs::File::open(&params.csv_path)
+            .map_err(|e| format!("Failed to read CSV file: {}", e))?;
+        let recipients = parse_recipients(file)?;
+
+        let result = distribute::v2::submit(distribute::v2::Params {
+            recipients,
+            sender: params.sender,
+            instrument_id: params.instrument_id,
+            ledger_host: params.ledger_host,
+            registry_url: params.registry_url,
+            decentralized_party_id: params.decentralized_party_id,
+            keycloak_client_id: params.keycloak_client_id,
+            keycloak_username: params.keycloak_username,
+            keycloak_password: params.keycloak_password,
+            keycloak_url: params.keycloak_url,
+            reference_base: params.reference_base,
+            on_transfer_complete: None,
+        })
+        .await?;
+
+        log::debug!("Batch distribution complete!");
+        log::debug!("Successful transfers: {}", result.successful_count);
+        if result.failed_count > 0 {
+            log::debug!("Failed transfers: {}", result.failed_count);
+            for transfer_result in result.results.iter().filter(|r| !r.success) {
+                log::debug!(
+                    "Failed transfer: {} to {} ({}): {}",
+                    transfer_result.amount,
+                    transfer_result.receiver,
+                    transfer_result.transfer_index + 1,
+                    transfer_result
+                        .error
+                        .as_ref()
+                        .unwrap_or(&"Unknown error".to_string())
+                );
+            }
+        }
+
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod v2_csv_tests {
+    use super::*;
+
+    #[test]
+    fn v2_lifts_each_bare_csv_receiver_to_a_basic_account() {
+        let csv = "receiver,amount\nalice::1220ab,0.5\nbob::1220cd,1.25\n";
+        let recipients = v2::parse_recipients(csv.as_bytes()).expect("csv must parse");
+
+        assert_eq!(recipients.len(), 2);
+        assert_eq!(
+            recipients[0].receiver,
+            common::transfer::v2::Account::basic("alice::1220ab")
+        );
+        assert_eq!(
+            recipients[1].receiver,
+            common::transfer::v2::Account::basic("bob::1220cd")
+        );
+        assert_eq!(
+            recipients[1].amount,
+            common::decimal::DamlDecimal::parse("1.25").unwrap()
+        );
+    }
+
+    #[test]
+    fn v2_rejects_an_unparsable_amount_naming_the_value() {
+        let csv = "receiver,amount\nalice::1220ab,not-a-number\n";
+        let err = v2::parse_recipients(csv.as_bytes()).unwrap_err();
+        assert!(
+            err.contains("not-a-number"),
+            "the error must name the bad value, got {err}"
+        );
+    }
+
+    #[test]
+    fn v2_rejects_an_empty_file() {
+        let csv = "receiver,amount\n";
+        let err = v2::parse_recipients(csv.as_bytes()).unwrap_err();
+        assert!(err.contains("No recipients"), "got {err}");
+    }
+}
+
 #[cfg(test)]
 // Each test holds SERIAL_LOCK across its awaits on purpose: the lock spans
 // the whole test body so tests never interleave, and `#[tokio::test]` runs
