@@ -30,3 +30,6 @@ pub const TEMPLATE_EXECUTED_TRANSFER: &str =
 
 pub const INTERFACE_HOLDING: &str =
     "#splice-api-token-holding-v1:Splice.Api.Token.HoldingV1:Holding";
+
+pub const TEMPLATE_TRANSFER_FACTORY_V2: &str = "#splice-api-token-transfer-instruction-v2:Splice.Api.Token.TransferInstructionV2:TransferFactory";
+pub const TEMPLATE_TRANSFER_INSTRUCTION_V2: &str = "#splice-api-token-transfer-instruction-v2:Splice.Api.Token.TransferInstructionV2:TransferInstruction";

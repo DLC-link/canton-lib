@@ -25,3 +25,18 @@ pub struct MetaValue {}
 pub struct ChoiceArguments {
     pub extra_args: ExtraArgs,
 }
+
+/// V2 form of the transfer-instruction choice arguments.
+///
+/// One type serves `TransferInstruction_Accept`, `_Reject` and `_Withdraw`:
+/// all three take the same two fields in V2.
+pub mod v2 {
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Debug, Serialize, Deserialize, Clone)]
+    #[serde(rename_all = "camelCase")]
+    pub struct ChoiceArguments {
+        pub actors: Vec<String>,
+        pub extra_args: super::ExtraArgs,
+    }
+}
