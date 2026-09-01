@@ -106,22 +106,19 @@ pub async fn submit(params: Params) -> Result<(), String> {
         },
     };
 
-    let submission_request = common::submission::Submission {
-        act_as: vec![params.receiver_party],
-        read_as: None,
-        command_id: uuid::Uuid::new_v4().to_string(),
-        disclosed_contracts: ctx.disclosed_contracts,
-        commands: vec![common::submission::Command::ExerciseCommand(
+    let submission_request = crate::utils::build_submission(
+        vec![params.receiver_party],
+        ctx.disclosed_contracts,
+        vec![common::submission::Command::ExerciseCommand(
             exercise_command,
         )],
-        ..Default::default()
-    };
+    );
 
-    ledger::submit::wait_for_transaction(ledger::submit::Params {
-        ledger_host: params.ledger_host,
-        access_token: params.access_token,
-        request: submission_request,
-    })
+    crate::utils::submit_and_wait(
+        &params.ledger_host,
+        &params.access_token,
+        submission_request,
+    )
     .await?;
 
     Ok(())

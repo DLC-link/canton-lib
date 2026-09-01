@@ -129,22 +129,19 @@ pub async fn submit(params: Params) -> Result<(), String> {
     };
 
     // Submit the withdrawal transaction
-    let submission_request = common::submission::Submission {
-        act_as: vec![params.sender_party],
-        read_as: None,
-        command_id: uuid::Uuid::new_v4().to_string(),
-        disclosed_contracts: withdraw_context.disclosed_contracts,
-        commands: vec![common::submission::Command::ExerciseCommand(
+    let submission_request = crate::utils::build_submission(
+        vec![params.sender_party],
+        withdraw_context.disclosed_contracts,
+        vec![common::submission::Command::ExerciseCommand(
             exercise_command,
         )],
-        ..Default::default()
-    };
+    );
 
-    ledger::submit::wait_for_transaction(ledger::submit::Params {
-        ledger_host: params.ledger_host,
-        access_token: params.access_token,
-        request: submission_request,
-    })
+    crate::utils::submit_and_wait(
+        &params.ledger_host,
+        &params.access_token,
+        submission_request,
+    )
     .await?;
 
     Ok(())
@@ -188,21 +185,14 @@ async fn submit_withdraws(
         .iter()
         .map(|cid| build_withdraw_command(cid, context))
         .collect();
-    let submission_request = common::submission::Submission {
-        act_as: vec![sender_party.to_string()],
-        read_as: None,
-        command_id: uuid::Uuid::new_v4().to_string(),
-        disclosed_contracts: context.disclosed_contracts.clone(),
+    let submission_request = crate::utils::build_submission(
+        vec![sender_party.to_string()],
+        context.disclosed_contracts.clone(),
         commands,
-        ..Default::default()
-    };
-    ledger::submit::wait_for_transaction(ledger::submit::Params {
-        ledger_host: ledger_host.to_string(),
-        access_token: access_token.to_string(),
-        request: submission_request,
-    })
-    .await
-    .map(|_| ())
+    );
+    crate::utils::submit_and_wait(ledger_host, access_token, submission_request)
+        .await
+        .map(|_| ())
 }
 
 /// Record one offer's outcome into the running result tally.
@@ -505,20 +495,17 @@ pub async fn withdraw_all(params: WithdrawAllParams) -> Result<WithdrawAllResult
         // Submit this batch
         log::debug!("  Submitting batch {}/{}...", batch_num, num_batches);
 
-        let submission_request = common::submission::Submission {
-            act_as: vec![params.sender_party.clone()],
-            read_as: None,
-            command_id: uuid::Uuid::new_v4().to_string(),
-            disclosed_contracts: withdraw_context.disclosed_contracts.clone(),
-            commands: batch_commands,
-            ..Default::default()
-        };
+        let submission_request = crate::utils::build_submission(
+            vec![params.sender_party.clone()],
+            withdraw_context.disclosed_contracts.clone(),
+            batch_commands,
+        );
 
-        match ledger::submit::wait_for_transaction(ledger::submit::Params {
-            ledger_host: params.ledger_host.clone(),
-            access_token: auth.access_token.clone(),
-            request: submission_request,
-        })
+        match crate::utils::submit_and_wait(
+            &params.ledger_host,
+            &auth.access_token,
+            submission_request,
+        )
         .await
         {
             Ok(_) => {

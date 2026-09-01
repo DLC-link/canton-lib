@@ -174,15 +174,7 @@ pub async fn consolidate_utxos(params: ConsolidateParams) -> Result<Vec<String>,
     }
 
     // Create metadata with the MergeSplit transaction kind
-    let mut transfer_meta: HashMap<String, String> = HashMap::new();
-    transfer_meta.insert(
-        "splice.lfdecentralizedtrust.org/reason".to_string(),
-        "UTXO consolidation".to_string(),
-    );
-    transfer_meta.insert(
-        "splice.lfdecentralizedtrust.org/tx-kind".to_string(),
-        "merge-split".to_string(),
-    );
+    let transfer_meta = crate::utils::merge_split_meta("UTXO consolidation");
 
     // Create a self-transfer to consolidate (sender == receiver)
     let transfer = common::transfer::Transfer {
@@ -195,9 +187,7 @@ pub async fn consolidate_utxos(params: ConsolidateParams) -> Result<Vec<String>,
             .add(chrono::Duration::hours(5))
             .to_rfc3339(),
         input_holding_cids: Some(input_holding_cids),
-        meta: Some(common::transfer::Meta {
-            values: Some(transfer_meta),
-        }),
+        meta: Some(transfer_meta),
     };
 
     // Get registry information for the transfer
@@ -244,22 +234,19 @@ pub async fn consolidate_utxos(params: ConsolidateParams) -> Result<Vec<String>,
         },
     };
 
-    let submission_request = common::submission::Submission {
-        act_as: vec![transfer.sender],
-        read_as: None,
-        command_id: uuid::Uuid::new_v4().to_string(),
-        disclosed_contracts: additional_information.choice_context.disclosed_contracts,
-        commands: vec![common::submission::Command::ExerciseCommand(
+    let submission_request = crate::utils::build_submission(
+        vec![transfer.sender.clone()],
+        additional_information.choice_context.disclosed_contracts,
+        vec![common::submission::Command::ExerciseCommand(
             exercise_command,
         )],
-        ..Default::default()
-    };
+    );
 
-    let response_raw = ledger::submit::wait_for_transaction(ledger::submit::Params {
-        ledger_host: params.ledger_host,
-        access_token: params.access_token,
-        request: submission_request,
-    })
+    let response_raw = crate::utils::submit_and_wait(
+        &params.ledger_host,
+        &params.access_token,
+        submission_request,
+    )
     .await?;
 
     // Parse the response to extract the resulting holding CID(s)

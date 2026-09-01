@@ -172,16 +172,7 @@ pub async fn submit(mut params: Params) -> Result<(), String> {
         params.transfer.input_holding_cids = Some(input_holding_cids);
     }
 
-    if params.transfer.meta.is_none() {
-        let mut transfer_meta: HashMap<String, String> = HashMap::new();
-        transfer_meta.insert(
-            "splice.lfdecentralizedtrust.org/reason".to_string(),
-            "".to_string(),
-        );
-        params.transfer.meta = Some(common::transfer::Meta {
-            values: Some(transfer_meta),
-        });
-    }
+    params.transfer.meta = crate::utils::ensure_reason_meta(params.transfer.meta);
 
     let additional_information =
         registry::transfer_factory::get(registry::transfer_factory::Params {
@@ -225,22 +216,19 @@ pub async fn submit(mut params: Params) -> Result<(), String> {
         },
     };
 
-    let submission_request = common::submission::Submission {
-        act_as: vec![params.transfer.sender],
-        read_as: None,
-        command_id: uuid::Uuid::new_v4().to_string(),
-        disclosed_contracts: additional_information.choice_context.disclosed_contracts,
-        commands: vec![common::submission::Command::ExerciseCommand(
+    let submission_request = crate::utils::build_submission(
+        vec![params.transfer.sender.clone()],
+        additional_information.choice_context.disclosed_contracts,
+        vec![common::submission::Command::ExerciseCommand(
             exercise_command,
         )],
-        ..Default::default()
-    };
+    );
 
-    ledger::submit::wait_for_transaction(ledger::submit::Params {
-        ledger_host: params.ledger_host,
-        access_token: params.access_token,
-        request: submission_request,
-    })
+    crate::utils::submit_and_wait(
+        &params.ledger_host,
+        &params.access_token,
+        submission_request,
+    )
     .await?;
 
     Ok(())
@@ -287,16 +275,7 @@ pub async fn submit_sequential_chained(
                     + chrono::Duration::hours(execute_before_hours))
                 .to_rfc3339(),
                 input_holding_cids: Some(params.initial_holding_cids.clone()),
-                meta: Some(common::transfer::Meta {
-                    values: Some({
-                        let mut map = HashMap::new();
-                        map.insert(
-                            "splice.lfdecentralizedtrust.org/reason".to_string(),
-                            "".to_string(),
-                        );
-                        map
-                    }),
-                }),
+                meta: Some(crate::utils::chained_transfer_meta(None)),
             };
 
             log::debug!("Fetching transfer factory context from registry (once)...");
@@ -420,25 +399,9 @@ pub async fn submit_sequential_chained(
             requested_at: chrono::Utc::now().to_rfc3339(),
             execute_before: (chrono::Utc::now() + chrono::Duration::hours(168)).to_rfc3339(),
             input_holding_cids: Some(current_holding_cids.clone()),
-            meta: Some(common::transfer::Meta {
-                values: Some({
-                    let mut map = HashMap::new();
-                    map.insert(
-                        "splice.lfdecentralizedtrust.org/reason".to_string(),
-                        "".to_string(),
-                    );
-
-                    // Add unique reference ID if generated
-                    if let Some(ref unique_ref) = transfer_reference {
-                        map.insert(
-                            "splice.lfdecentralizedtrust.org/reference".to_string(),
-                            unique_ref.clone(),
-                        );
-                    }
-
-                    map
-                }),
-            }),
+            meta: Some(crate::utils::chained_transfer_meta(
+                transfer_reference.as_deref(),
+            )),
         };
 
         // Create exercise command using the shared factory context
@@ -462,24 +425,17 @@ pub async fn submit_sequential_chained(
             },
         };
 
-        let submission_request = common::submission::Submission {
-            act_as: vec![params.sender.clone()],
-            read_as: None,
-            command_id: uuid::Uuid::new_v4().to_string(),
-            disclosed_contracts: disclosed_contracts.clone(),
-            commands: vec![common::submission::Command::ExerciseCommand(
+        let submission_request = crate::utils::build_submission(
+            vec![params.sender.clone()],
+            disclosed_contracts.clone(),
+            vec![common::submission::Command::ExerciseCommand(
                 exercise_command,
             )],
-            ..Default::default()
-        };
+        );
 
         // Submit to ledger with fresh token
-        match ledger::submit::wait_for_transaction(ledger::submit::Params {
-            ledger_host: params.ledger_host.clone(),
-            access_token: current_token,
-            request: submission_request,
-        })
-        .await
+        match crate::utils::submit_and_wait(&params.ledger_host, &current_token, submission_request)
+            .await
         {
             Ok(response_raw) => {
                 // Parse response to extract change UTXOs, transfer offer CID, and update_id

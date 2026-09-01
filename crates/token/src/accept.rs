@@ -110,22 +110,19 @@ pub async fn submit(params: Params) -> Result<(), String> {
     };
 
     // Submit the acceptance transaction
-    let submission_request = common::submission::Submission {
-        act_as: vec![params.receiver_party],
-        read_as: None,
-        command_id: uuid::Uuid::new_v4().to_string(),
-        disclosed_contracts: accept_context.disclosed_contracts,
-        commands: vec![common::submission::Command::ExerciseCommand(
+    let submission_request = crate::utils::build_submission(
+        vec![params.receiver_party],
+        accept_context.disclosed_contracts,
+        vec![common::submission::Command::ExerciseCommand(
             exercise_command,
         )],
-        ..Default::default()
-    };
+    );
 
-    ledger::submit::wait_for_transaction(ledger::submit::Params {
-        ledger_host: params.ledger_host,
-        access_token: params.access_token,
-        request: submission_request,
-    })
+    crate::utils::submit_and_wait(
+        &params.ledger_host,
+        &params.access_token,
+        submission_request,
+    )
     .await?;
 
     Ok(())
@@ -295,20 +292,17 @@ pub async fn accept_all(params: AcceptAllParams) -> Result<AcceptAllResult, Stri
         // Submit this batch
         log::debug!("Submitting batch {}/{}...", batch_num, num_batches);
 
-        let submission_request = common::submission::Submission {
-            act_as: vec![params.receiver_party.clone()],
-            read_as: None,
-            command_id: uuid::Uuid::new_v4().to_string(),
-            disclosed_contracts: accept_context.disclosed_contracts.clone(),
-            commands: batch_commands,
-            ..Default::default()
-        };
+        let submission_request = crate::utils::build_submission(
+            vec![params.receiver_party.clone()],
+            accept_context.disclosed_contracts.clone(),
+            batch_commands,
+        );
 
-        match ledger::submit::wait_for_transaction(ledger::submit::Params {
-            ledger_host: params.ledger_host.clone(),
-            access_token: auth.access_token.clone(),
-            request: submission_request,
-        })
+        match crate::utils::submit_and_wait(
+            &params.ledger_host,
+            &auth.access_token,
+            submission_request,
+        )
         .await
         {
             Ok(_) => {
