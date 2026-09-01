@@ -46,6 +46,9 @@ pub struct GetUtxoCountParams {
     pub ledger_host: String,
     /// Access token for the party
     pub access_token: String,
+    /// Counts only this account's holdings when `Some`. Must match whatever
+    /// the caller will then consolidate.
+    pub account: Option<common::transfer::v2::Account>,
 }
 
 /// Parameters for consolidating UTXOs
@@ -80,6 +83,7 @@ pub struct ConsolidateParams {
 ///     },
 ///     ledger_host: "https://participant.example.com".to_string(),
 ///     access_token: "eyJ...".to_string(),
+///     account: None,
 /// };
 ///
 /// let count = consolidate::get_utxo_count(params).await?;
@@ -91,6 +95,7 @@ pub async fn get_utxo_count(params: GetUtxoCountParams) -> Result<usize, String>
         party: params.party,
         access_token: params.access_token,
         instrument_id: params.instrument_id,
+        account: params.account,
     })
     .await?;
 
@@ -132,6 +137,7 @@ pub async fn consolidate_utxos(params: ConsolidateParams) -> Result<Vec<String>,
             party: params.party.clone(),
             access_token: params.access_token.clone(),
             instrument_id: params.instrument_id.clone(),
+            account: None,
         })
         .await?;
 
@@ -156,6 +162,7 @@ pub async fn consolidate_utxos(params: ConsolidateParams) -> Result<Vec<String>,
         party: params.party.clone(),
         access_token: params.access_token.clone(),
         instrument_id: params.instrument_id.clone(),
+        account: None,
     })
     .await?;
 
@@ -338,6 +345,7 @@ pub async fn check_and_consolidate(
         instrument_id: params.instrument_id.clone(),
         ledger_host: params.ledger_host.clone(),
         access_token: params.access_token.clone(),
+        account: None,
     })
     .await?;
 

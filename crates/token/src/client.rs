@@ -121,6 +121,7 @@ impl TokenClient {
             party: self.config.party.clone(),
             access_token,
             instrument_id: self.config.instrument.clone(),
+            account: None,
         })
         .await
     }

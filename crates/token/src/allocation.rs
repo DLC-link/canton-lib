@@ -55,6 +55,7 @@ pub async fn allocate(params: Params) -> Result<(), String> {
             party: params.allocation.transfer_leg.sender.clone(),
             access_token: params.access_token.clone(),
             instrument_id: params.allocation.transfer_leg.instrument_id.clone(),
+            account: None,
         })
         .await?;
         input_holding_cids = contracts
