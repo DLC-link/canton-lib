@@ -948,4 +948,167 @@ mod v2_tests {
             Some("withdraw")
         );
     }
+
+    // --- `v2::withdraw_batch` against a stubbed registry and ledger ---
+    //
+    // `withdraw_batch` takes contract ids directly, so it never queries the
+    // active-contract set and both of its boundaries are plain HTTP: the
+    // registry choice-context route and the ledger submit endpoint. Stubbing
+    // those two reaches all four of its branches.
+
+    use wiremock::matchers::{method, path, path_regex};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    const SUBMIT_PATH: &str = "/v2/commands/submit-and-wait-for-transaction";
+
+    /// A server answering the withdraw choice-context route and the ledger
+    /// submit endpoint. The first `submit_failures` submissions get a 500 and
+    /// every later one gets a 200, which is what separates a failed batch from
+    /// the per-offer retries that follow it.
+    async fn withdraw_stub(submit_failures: u64) -> MockServer {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path_regex(r".*/choice-contexts/withdraw$"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "choiceContextData": { "values": {} },
+                "disclosedContracts": []
+            })))
+            .mount(&server)
+            .await;
+
+        if submit_failures > 0 {
+            Mock::given(method("POST"))
+                .and(path(SUBMIT_PATH))
+                .respond_with(ResponseTemplate::new(500).set_body_string("rejected"))
+                .up_to_n_times(submit_failures)
+                .with_priority(1)
+                .mount(&server)
+                .await;
+        }
+
+        Mock::given(method("POST"))
+            .and(path(SUBMIT_PATH))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({})))
+            .with_priority(2)
+            .mount(&server)
+            .await;
+
+        server
+    }
+
+    fn batch_params(server: &MockServer, contract_ids: Vec<String>) -> v2::WithdrawBatchParams {
+        v2::WithdrawBatchParams {
+            contract_ids,
+            sender_party: "alice::1220ab".to_string(),
+            ledger_host: server.uri(),
+            access_token: "test-access-token".to_string(),
+            registry_url: server.uri(),
+            decentralized_party_id: "admin::1220ef".to_string(),
+        }
+    }
+
+    /// How many submissions the run sent to the ledger.
+    async fn submit_count(server: &MockServer) -> usize {
+        server
+            .received_requests()
+            .await
+            .expect("wiremock records requests by default")
+            .iter()
+            .filter(|r| r.url.path() == SUBMIT_PATH)
+            .count()
+    }
+
+    #[tokio::test]
+    async fn v2_withdraw_batch_returns_before_calling_anything_on_an_empty_list() {
+        let server = withdraw_stub(0).await;
+
+        let result = v2::withdraw_batch(batch_params(&server, Vec::new()))
+            .await
+            .expect("an empty list is not an error");
+
+        assert_eq!(result.successful_count, 0);
+        assert_eq!(result.failed_count, 0);
+        assert!(result.results.is_empty());
+        assert_eq!(
+            server
+                .received_requests()
+                .await
+                .expect("wiremock records requests by default")
+                .len(),
+            0,
+            "an empty list must not even fetch the choice context"
+        );
+    }
+
+    #[tokio::test]
+    async fn v2_withdraw_batch_records_every_offer_of_a_batch_that_succeeds() {
+        let server = withdraw_stub(0).await;
+        let ids = vec!["00one".to_string(), "00two".to_string()];
+
+        let result = v2::withdraw_batch(batch_params(&server, ids.clone()))
+            .await
+            .expect("the batch succeeds");
+
+        assert_eq!(result.successful_count, 2);
+        assert_eq!(result.failed_count, 0);
+        let recorded: Vec<&String> = result.results.iter().map(|r| &r.contract_id).collect();
+        assert_eq!(recorded, ids.iter().collect::<Vec<&String>>());
+        assert!(
+            result
+                .results
+                .iter()
+                .all(|r| r.success && r.error.is_none())
+        );
+        assert_eq!(
+            submit_count(&server).await,
+            1,
+            "a batch that succeeds is one atomic submission"
+        );
+    }
+
+    #[tokio::test]
+    async fn v2_withdraw_batch_retries_a_failed_multi_offer_batch_one_offer_at_a_time() {
+        // Only the first submission fails, so the batch fails and both
+        // per-offer retries then succeed.
+        let server = withdraw_stub(1).await;
+        let ids = vec!["00one".to_string(), "00two".to_string()];
+
+        let result = v2::withdraw_batch(batch_params(&server, ids))
+            .await
+            .expect("the retries succeed");
+
+        assert_eq!(result.successful_count, 2);
+        assert_eq!(result.failed_count, 0);
+        assert_eq!(
+            submit_count(&server).await,
+            3,
+            "one failed batch submission, then one submission per offer"
+        );
+    }
+
+    #[tokio::test]
+    async fn v2_withdraw_batch_reports_a_failed_single_offer_without_resubmitting_it() {
+        // Every submission fails, so the single-offer branch has nothing to
+        // split and must record the failure as it stands.
+        let server = withdraw_stub(u64::MAX).await;
+
+        let result = v2::withdraw_batch(batch_params(&server, vec!["00one".to_string()]))
+            .await
+            .expect("a failed offer is reported, not returned as an error");
+
+        assert_eq!(result.successful_count, 0);
+        assert_eq!(result.failed_count, 1);
+        assert_eq!(result.results.len(), 1);
+        assert!(!result.results[0].success);
+        assert!(
+            result.results[0].error.is_some(),
+            "a failed withdraw must carry the reason"
+        );
+        assert_eq!(
+            submit_count(&server).await,
+            1,
+            "a one-offer batch has nothing to split, so it must not be resubmitted"
+        );
+    }
 }
