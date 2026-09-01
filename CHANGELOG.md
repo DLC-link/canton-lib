@@ -7,6 +7,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-01
+
+### Added
+
+- Token Standard V2 on the transfer path. A caller now chooses the registry's
+  V1 or V2 API per call, at feature parity. V1 items stay exactly where they
+  are; every V2 item lives in a `v2` submodule beside its V1 twin, so no V1
+  path changes shape.
+  - `common::transfer::v2` — `Account` (`owner`/`provider`/`id`, both
+    `Optional` fields serializing as explicit JSON nulls, as the Daml JSON
+    encoding requires) and `Transfer`, whose `sender` and `receiver` are
+    accounts rather than bare parties. `Account::basic(owner)` builds the
+    unlabelled account a V1 party maps to.
+  - `common::transfer_factory::v2::ChoiceArguments` — drops `expectedAdmin`,
+    adds `actors`. `ExtraArgs`, `Context`, `ContextValue`, `Meta`, `MetaValue`,
+    `Response` and `ChoiceContext` are version-neutral and reused unchanged.
+  - `common::accept::v2::ChoiceArguments` — `actors` plus `extraArgs`.
+  - `common::submission::ChoiceArgumentsVariations::TransferFactoryV2` and
+    `::AcceptV2` variants, for building the V2 exercise commands.
+  - `registry::transfer_factory::v2::get` — the
+    `/transfer-instruction/v2/transfer-factory` route, plus `factory_url` and
+    `v2::factory_url` for the V1 and V2 paths.
+  - `registry::accept_context::v2::get` — the
+    `/transfer-instruction/v2/{id}/choice-contexts/{accept,reject,withdraw}`
+    routes, selected by `v2::InstructionChoice`. V2 fetches the choice's own
+    context; the V1 path fetches the accept context for all three.
+  - `token::{transfer, split, consolidate, accept, reject, cancel_offers,
+    distribute, batch}::v2` — a V2 entry point for every V1 one:
+    `transfer::v2::{submit, submit_sequential_chained}`, `split::v2::submit`,
+    `consolidate::v2::{consolidate_utxos, check_and_consolidate}`,
+    `accept::v2::{submit, accept_all}`, `reject::v2::submit`,
+    `cancel_offers::v2::{submit, withdraw_batch, withdraw_all}`,
+    `distribute::v2::submit` and `batch::v2::submit_from_csv`.
+  - `common::TokenStandardVersion` — `V1` (the default) or `V2`.
+- `TokenClientConfig.version` — which registry API this client's calls use.
+  `TokenStandardVersion::V1` reproduces the behaviour of every release before
+  0.7.0. **The struct has no `Default` and this field has none**: adding it
+  means every `TokenClientConfig` literal must name it, so no existing caller
+  silently changes version.
+- `token::active_contracts::Params.account: Option<common::transfer::v2::Account>`
+  — when `Some`, keep only the holdings whose account label matches; a V2
+  holding carries its label in the metadata of its V1 interface view. `None`
+  keeps every holding the party owns, which is what every V1 caller wants and
+  exactly what this function did before.
+
+### Notes
+
+- **The one input a V2 entry point rejects that V1 had no way to express** is
+  an `Account` with `owner: None` — the registry-managed account shape, used
+  for an instrument admin's mint source. Every V2 entry point holding an
+  account guards it through one `require_owner` helper and fails with an error
+  naming the offending field. V1 carried bare party strings, which cannot be
+  absent, so no V1 caller can reach this error.
+- The choice names are version-neutral: V2 keeps `TransferFactory_Transfer`,
+  `TransferInstruction_Accept`, `TransferInstruction_Reject` and
+  `TransferInstruction_Withdraw`. No V2 choice-name constant was added.
+- `actors` is derived inside each V2 entry point from the data it already
+  holds, never taken from a public `Params`. The registry's `checkActors`
+  accepts exactly one set per path and compares by set equality, so any other
+  value fails the submission.
+
 ## [0.6.1] - 2026-06-24
 
 ### Added

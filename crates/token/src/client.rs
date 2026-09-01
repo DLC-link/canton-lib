@@ -960,14 +960,12 @@ mod integration_tests {
         incoming_with_reference, offer_amount, offer_cid, outgoing_with_reference,
     };
 
-    #[tokio::test]
-    #[ignore = "integration test: requires live devnet and env vars"]
-    async fn integration_transfer_offer_accept() {
+    async fn transfer_offer_accept(version: common::TokenStandardVersion) {
         let _guard = SERIAL_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let state = IntegrationTestState::from_env();
         let test_uuid = uuid::Uuid::new_v4().to_string();
-        let mut p1 = state.client_for(&state.party_1).await;
-        let mut p2 = state.client_for(&state.party_2).await;
+        let mut p1 = state.client_for_version(&state.party_1, version).await;
+        let mut p2 = state.client_for_version(&state.party_2, version).await;
 
         // Party 1 offers 1 to party 2.
         let party_1_balance = balance(&mut p1).await;
@@ -1031,12 +1029,22 @@ mod integration_tests {
 
     #[tokio::test]
     #[ignore = "integration test: requires live devnet and env vars"]
-    async fn integration_transfer_accept_all() {
+    async fn integration_transfer_offer_accept_v1() {
+        transfer_offer_accept(common::TokenStandardVersion::V1).await;
+    }
+
+    #[tokio::test]
+    #[ignore = "integration test: requires live devnet and env vars"]
+    async fn integration_transfer_offer_accept_v2() {
+        transfer_offer_accept(common::TokenStandardVersion::V2).await;
+    }
+
+    async fn transfer_accept_all(version: common::TokenStandardVersion) {
         let _guard = SERIAL_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let state = IntegrationTestState::from_env();
         let test_uuid = uuid::Uuid::new_v4().to_string();
-        let mut p1 = state.client_for(&state.party_1).await;
-        let mut p2 = state.client_for(&state.party_2).await;
+        let mut p1 = state.client_for_version(&state.party_1, version).await;
+        let mut p2 = state.client_for_version(&state.party_2, version).await;
 
         // The "all" calls below act on every pending offer, not only this
         // test's, so cancel any leftovers from earlier failed runs first to
@@ -1101,12 +1109,22 @@ mod integration_tests {
 
     #[tokio::test]
     #[ignore = "integration test: requires live devnet and env vars"]
-    async fn integration_transfer_offer_cancel_reject() {
+    async fn integration_transfer_accept_all_v1() {
+        transfer_accept_all(common::TokenStandardVersion::V1).await;
+    }
+
+    #[tokio::test]
+    #[ignore = "integration test: requires live devnet and env vars"]
+    async fn integration_transfer_accept_all_v2() {
+        transfer_accept_all(common::TokenStandardVersion::V2).await;
+    }
+
+    async fn transfer_offer_cancel_reject(version: common::TokenStandardVersion) {
         let _guard = SERIAL_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let state = IntegrationTestState::from_env();
         let test_uuid = uuid::Uuid::new_v4().to_string();
-        let mut p1 = state.client_for(&state.party_1).await;
-        let mut p2 = state.client_for(&state.party_2).await;
+        let mut p1 = state.client_for_version(&state.party_1, version).await;
+        let mut p2 = state.client_for_version(&state.party_2, version).await;
 
         // Party 1 offers 1.24, then cancels its own offer.
         let party_1_balance = balance(&mut p1).await;
@@ -1165,11 +1183,21 @@ mod integration_tests {
 
     #[tokio::test]
     #[ignore = "integration test: requires live devnet and env vars"]
-    async fn integration_cancel_all() {
+    async fn integration_transfer_offer_cancel_reject_v1() {
+        transfer_offer_cancel_reject(common::TokenStandardVersion::V1).await;
+    }
+
+    #[tokio::test]
+    #[ignore = "integration test: requires live devnet and env vars"]
+    async fn integration_transfer_offer_cancel_reject_v2() {
+        transfer_offer_cancel_reject(common::TokenStandardVersion::V2).await;
+    }
+
+    async fn cancel_all(version: common::TokenStandardVersion) {
         let _guard = SERIAL_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let state = IntegrationTestState::from_env();
         let test_uuid = uuid::Uuid::new_v4().to_string();
-        let mut p1 = state.client_for(&state.party_1).await;
+        let mut p1 = state.client_for_version(&state.party_1, version).await;
 
         // cancel_all_offers acts on every pending offer, not only this
         // test's, so cancel any leftovers from earlier failed runs first to
@@ -1218,11 +1246,21 @@ mod integration_tests {
 
     #[tokio::test]
     #[ignore = "integration test: requires live devnet and env vars"]
-    async fn integration_distribute() {
+    async fn integration_cancel_all_v1() {
+        cancel_all(common::TokenStandardVersion::V1).await;
+    }
+
+    #[tokio::test]
+    #[ignore = "integration test: requires live devnet and env vars"]
+    async fn integration_cancel_all_v2() {
+        cancel_all(common::TokenStandardVersion::V2).await;
+    }
+
+    async fn distribute(version: common::TokenStandardVersion) {
         let _guard = SERIAL_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let state = IntegrationTestState::from_env();
         let test_uuid = uuid::Uuid::new_v4().to_string();
-        let mut p1 = state.client_for(&state.party_1).await;
+        let mut p1 = state.client_for_version(&state.party_1, version).await;
 
         let party_1_balance = balance(&mut p1).await;
         let recipients = ["1", "2", "3"]
@@ -1268,6 +1306,22 @@ mod integration_tests {
 
     #[tokio::test]
     #[ignore = "integration test: requires live devnet and env vars"]
+    async fn integration_distribute_v1() {
+        distribute(common::TokenStandardVersion::V1).await;
+    }
+
+    #[tokio::test]
+    #[ignore = "integration test: requires live devnet and env vars"]
+    async fn integration_distribute_v2() {
+        distribute(common::TokenStandardVersion::V2).await;
+    }
+
+    // Not paired over the two versions, unlike every other test here:
+    // `utxo_count` and `holdings` do not dispatch on the version. Both
+    // reach `active_contracts::get`, which serves V1 and V2 alike, so a
+    // second run would execute identical code.
+    #[tokio::test]
+    #[ignore = "integration test: requires live devnet and env vars"]
     async fn integration_utxo_count() {
         let _guard = SERIAL_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let state = IntegrationTestState::from_env();
@@ -1286,12 +1340,10 @@ mod integration_tests {
         );
     }
 
-    #[tokio::test]
-    #[ignore = "integration test: requires live devnet and env vars"]
-    async fn integration_check_and_consolidate() {
+    async fn check_and_consolidate(version: common::TokenStandardVersion) {
         let _guard = SERIAL_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let state = IntegrationTestState::from_env();
-        let mut p1 = state.client_for(&state.party_1).await;
+        let mut p1 = state.client_for_version(&state.party_1, version).await;
         let party_1_balance = balance(&mut p1).await;
 
         // Below the threshold nothing happens.
@@ -1345,10 +1397,20 @@ mod integration_tests {
 
     #[tokio::test]
     #[ignore = "integration test: requires live devnet and env vars"]
-    async fn integration_split() {
+    async fn integration_check_and_consolidate_v1() {
+        check_and_consolidate(common::TokenStandardVersion::V1).await;
+    }
+
+    #[tokio::test]
+    #[ignore = "integration test: requires live devnet and env vars"]
+    async fn integration_check_and_consolidate_v2() {
+        check_and_consolidate(common::TokenStandardVersion::V2).await;
+    }
+
+    async fn split(version: common::TokenStandardVersion) {
         let _guard = SERIAL_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let state = IntegrationTestState::from_env();
-        let mut p1 = state.client_for(&state.party_1).await;
+        let mut p1 = state.client_for_version(&state.party_1, version).await;
 
         let party_1_balance = balance(&mut p1).await;
         let amounts = vec![dec("1"), dec("2"), dec("0.5")];
@@ -1400,10 +1462,20 @@ mod integration_tests {
 
     #[tokio::test]
     #[ignore = "integration test: requires live devnet and env vars"]
-    async fn integration_split_total() {
+    async fn integration_split_v1() {
+        split(common::TokenStandardVersion::V1).await;
+    }
+
+    #[tokio::test]
+    #[ignore = "integration test: requires live devnet and env vars"]
+    async fn integration_split_v2() {
+        split(common::TokenStandardVersion::V2).await;
+    }
+
+    async fn split_total(version: common::TokenStandardVersion) {
         let _guard = SERIAL_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let state = IntegrationTestState::from_env();
-        let mut p1 = state.client_for(&state.party_1).await;
+        let mut p1 = state.client_for_version(&state.party_1, version).await;
 
         let party_1_balance = balance(&mut p1).await;
         assert!(
@@ -1460,5 +1532,17 @@ mod integration_tests {
 
         // Merge the pieces back so the wallet keeps its shape for other tests.
         p1.consolidate().await.expect("cleanup consolidate failed");
+    }
+
+    #[tokio::test]
+    #[ignore = "integration test: requires live devnet and env vars"]
+    async fn integration_split_total_v1() {
+        split_total(common::TokenStandardVersion::V1).await;
+    }
+
+    #[tokio::test]
+    #[ignore = "integration test: requires live devnet and env vars"]
+    async fn integration_split_total_v2() {
+        split_total(common::TokenStandardVersion::V2).await;
     }
 }

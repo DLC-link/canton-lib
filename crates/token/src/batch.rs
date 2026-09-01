@@ -267,14 +267,12 @@ mod integration_tests {
     use common::decimal::DamlDecimal;
     use std::io::Write;
 
-    #[tokio::test]
-    #[ignore = "integration test: requires live devnet and env vars"]
-    async fn integration_batch_from_csv() {
+    async fn batch_from_csv(version: common::TokenStandardVersion) {
         let _guard = SERIAL_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let state = IntegrationTestState::from_env();
         let test_uuid = uuid::Uuid::new_v4().to_string();
-        let mut p1 = state.client_for(&state.party_1).await;
-        let mut p2 = state.client_for(&state.party_2).await;
+        let mut p1 = state.client_for_version(&state.party_1, version).await;
+        let mut p2 = state.client_for_version(&state.party_2, version).await;
         let party_1_balance = balance(&mut p1).await;
         let party_2_balance = balance(&mut p2).await;
 
@@ -292,7 +290,9 @@ mod integration_tests {
         file.write_all(csv_content.as_bytes())
             .expect("failed to write CSV content");
 
-        submit_from_csv(Params {
+        // `v2::Params` mirrors `Params` field for field except `sender`,
+        // which V2 carries as an account rather than a bare party.
+        let params = Params {
             csv_path: csv_path.to_string_lossy().into_owned(),
             sender: state.party_1.clone(),
             instrument_id: state.instrument.clone(),
@@ -304,8 +304,26 @@ mod integration_tests {
             keycloak_password: state.keycloak.password.clone(),
             keycloak_url: state.keycloak.url.clone(),
             reference_base: Some(test_uuid.clone()),
-        })
-        .await
+        };
+        match version {
+            common::TokenStandardVersion::V1 => submit_from_csv(params).await,
+            common::TokenStandardVersion::V2 => {
+                v2::submit_from_csv(v2::Params {
+                    csv_path: params.csv_path,
+                    sender: common::transfer::v2::Account::basic(params.sender),
+                    instrument_id: params.instrument_id,
+                    ledger_host: params.ledger_host,
+                    registry_url: params.registry_url,
+                    decentralized_party_id: params.decentralized_party_id,
+                    keycloak_client_id: params.keycloak_client_id,
+                    keycloak_username: params.keycloak_username,
+                    keycloak_password: params.keycloak_password,
+                    keycloak_url: params.keycloak_url,
+                    reference_base: params.reference_base,
+                })
+                .await
+            }
+        }
         .expect("batch distribution failed");
         std::fs::remove_file(&csv_path).ok();
 
@@ -339,5 +357,17 @@ mod integration_tests {
             party_2_balance,
             "party 2 balance should be unchanged"
         );
+    }
+
+    #[tokio::test]
+    #[ignore = "integration test: requires live devnet and env vars"]
+    async fn integration_batch_from_csv_v1() {
+        batch_from_csv(common::TokenStandardVersion::V1).await;
+    }
+
+    #[tokio::test]
+    #[ignore = "integration test: requires live devnet and env vars"]
+    async fn integration_batch_from_csv_v2() {
+        batch_from_csv(common::TokenStandardVersion::V2).await;
     }
 }

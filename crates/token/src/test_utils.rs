@@ -21,6 +21,18 @@
 //! cancel. Tests must never run in parallel: they mutate the same
 //! wallets, so each one holds [`SERIAL_LOCK`] for its whole body. A test
 //! that succeeds leaves both wallet balances exactly as it found them.
+//!
+//! Since 0.7.0 most of these tests run twice, once per Token Standard
+//! version. Each test body is a plain `async fn` taking a
+//! [`common::TokenStandardVersion`], called from an
+//! `integration_<name>_v1` and an `integration_<name>_v2` wrapper, and it
+//! builds its clients with [`IntegrationTestState::client_for_version`].
+//! Running the pair back to back is safe because each body restores both
+//! wallet balances before it returns. Two tests are deliberately
+//! unpaired: `client.rs`'s `integration_utxo_count`, whose two calls do
+//! not dispatch on the version, and `registry`'s
+//! `integration_transfer_factory_v2`, which has a separate V1 twin
+//! because the two routes take different choice arguments.
 
 use crate::client::{KeycloakConfig, TokenClient, TokenClientConfig};
 use common::decimal::DamlDecimal;
