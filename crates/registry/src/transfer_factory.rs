@@ -14,15 +14,19 @@ pub struct Params {
     pub request: Request,
 }
 
+/// The V1 transfer-factory route.
+pub fn factory_url(registry_url: &str, decentralized_party_id: &str) -> String {
+    format!(
+        "{registry_url}/api/token-standard/v0/registrars/{decentralized_party_id}/registry/transfer-instruction/v1/transfer-factory"
+    )
+}
+
 pub async fn get(params: Params) -> Result<common::transfer_factory::Response, String> {
     let client = reqwest::Client::new();
 
-    let url = format!(
-        "{}/api/token-standard/v0/registrars/{}/registry/transfer-instruction/v1/transfer-factory",
-        params.registry_url, params.decentralized_party_id
-    );
+    let url = factory_url(&params.registry_url, &params.decentralized_party_id);
     let response = client
-        .post(url.to_string())
+        .post(url)
         .json(&params.request)
         .send()
         .await
@@ -44,6 +48,19 @@ pub async fn get(params: Params) -> Result<common::transfer_factory::Response, S
     let body: common::transfer_factory::Response =
         serde_json::from_str(&body_raw).map_err(|e| format!("Failed to parse response: {}", e))?;
     Ok(body)
+}
+
+#[cfg(test)]
+mod url_tests {
+    use super::*;
+
+    #[test]
+    fn v1_factory_url_keeps_its_v1_path() {
+        assert_eq!(
+            factory_url("https://registry.example", "admin::1220ab"),
+            "https://registry.example/api/token-standard/v0/registrars/admin::1220ab/registry/transfer-instruction/v1/transfer-factory"
+        );
+    }
 }
 
 #[cfg(test)]

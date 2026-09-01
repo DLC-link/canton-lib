@@ -30,6 +30,17 @@ pub struct ChoiceContextData {
     pub values: serde_json::Value,
 }
 
+/// The V1 accept choice-context route.
+pub fn accept_context_url(
+    registry_url: &str,
+    decentralized_party_id: &str,
+    transfer_offer_contract_id: &str,
+) -> String {
+    format!(
+        "{registry_url}/api/token-standard/v0/registrars/{decentralized_party_id}/registry/transfer-instruction/v1/{transfer_offer_contract_id}/choice-contexts/accept"
+    )
+}
+
 /// Get the choice context for accepting a transfer offer.
 /// This retrieves the disclosed contracts and context data needed to accept the transfer.
 ///
@@ -51,9 +62,10 @@ pub struct ChoiceContextData {
 /// let response = accept_context::get(params).await?;
 /// ```
 pub async fn get(params: Params) -> Result<Response, String> {
-    let url = format!(
-        "{}/api/token-standard/v0/registrars/{}/registry/transfer-instruction/v1/{}/choice-contexts/accept",
-        params.registry_url, params.decentralized_party_id, params.transfer_offer_contract_id
+    let url = accept_context_url(
+        &params.registry_url,
+        &params.decentralized_party_id,
+        &params.transfer_offer_contract_id,
     );
 
     let client = reqwest::Client::new();
@@ -86,20 +98,13 @@ pub async fn get(params: Params) -> Result<Response, String> {
 
 #[cfg(test)]
 mod tests {
-    #[tokio::test]
-    async fn test_get_accept_context() {
-        // This is an integration test that requires a valid transfer offer contract ID
-        // Skip in CI or when no .env is present
-        dotenvy::dotenv().ok();
+    use super::*;
 
-        let registry_url = std::env::var("REGISTRY_URL").unwrap_or_default();
-        let decentralized_party_id = std::env::var("DECENTRALIZED_PARTY_ID").unwrap_or_default();
-
-        if registry_url.is_empty() || decentralized_party_id.is_empty() {
-            return;
-        }
-
-        // Note: This test requires a valid transfer_offer_contract_id
-        // which would come from a real transfer. This is just a placeholder test.
+    #[test]
+    fn v1_accept_context_url_keeps_its_v1_path() {
+        assert_eq!(
+            accept_context_url("https://registry.example", "admin::1220ab", "00offer"),
+            "https://registry.example/api/token-standard/v0/registrars/admin::1220ab/registry/transfer-instruction/v1/00offer/choice-contexts/accept"
+        );
     }
 }
