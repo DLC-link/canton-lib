@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::ops::Add;
 
 /// Result of a consolidation operation
+#[derive(Debug)]
 pub struct ConsolidationResult {
     /// Whether consolidation was performed
     pub consolidated: bool,
@@ -389,6 +390,292 @@ pub async fn check_and_consolidate(
 
 // Live coverage for `get_utxo_count` and `check_and_consolidate` runs
 // through `TokenClient` in `crate::client`'s `integration_tests` module.
+
+/// Token Standard V2 forms of the consolidation entry points.
+///
+/// `get_utxo_count` stays version-neutral, but Task 4a gives it the same
+/// registry, so these entry points call it with the account's derived owner.
+pub mod v2 {
+    use crate::split::v2::self_transfer;
+    use crate::transfer::v2::{factory_command, fetch_factory};
+    use crate::utils::{build_submission, require_owner, submit_and_wait};
+    use common::decimal::DamlDecimal;
+
+    pub struct ConsolidateParams {
+        pub account: common::transfer::v2::Account,
+        pub instrument_id: common::transfer::InstrumentId,
+        pub input_holding_cids: Option<Vec<String>>,
+        pub ledger_host: String,
+        pub access_token: String,
+        pub registry_url: String,
+        pub decentralized_party_id: String,
+    }
+
+    pub struct CheckConsolidateParams {
+        pub account: common::transfer::v2::Account,
+        pub instrument_id: common::transfer::InstrumentId,
+        pub threshold: usize,
+        pub ledger_host: String,
+        pub access_token: String,
+        pub registry_url: String,
+        pub decentralized_party_id: String,
+    }
+
+    /// Merge all of an instrument's holdings into a single UTXO via a
+    /// merge-split self-transfer.
+    pub async fn consolidate_utxos(params: ConsolidateParams) -> Result<Vec<String>, String> {
+        let owner = require_owner(&params.account, "account")?;
+        let actors = vec![owner.clone()];
+
+        let input_holding_cids = if let Some(cids) = params.input_holding_cids {
+            cids
+        } else {
+            let contracts = crate::active_contracts::get(crate::active_contracts::Params {
+                ledger_host: params.ledger_host.clone(),
+                party: owner.clone(),
+                access_token: params.access_token.clone(),
+                instrument_id: params.instrument_id.clone(),
+                // Task 4a. Consolidate only within the caller's own account.
+                account: Some(params.account.clone()),
+            })
+            .await?;
+
+            contracts
+                .iter()
+                .map(|c| c.created_event.contract_id.clone())
+                .collect()
+        };
+
+        if input_holding_cids.is_empty() {
+            return Err("No holdings to consolidate".to_string());
+        }
+
+        if input_holding_cids.len() == 1 {
+            return Ok(input_holding_cids);
+        }
+
+        let contracts = crate::active_contracts::get(crate::active_contracts::Params {
+            ledger_host: params.ledger_host.clone(),
+            party: owner,
+            access_token: params.access_token.clone(),
+            instrument_id: params.instrument_id.clone(),
+            account: Some(params.account.clone()),
+        })
+        .await?;
+
+        let holdings: Vec<crate::holding::Holding> = contracts
+            .iter()
+            .filter(|c| input_holding_cids.contains(&c.created_event.contract_id))
+            .map(crate::holding::Holding::from_active_contract)
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // The query above filters by account label; `input_holding_cids` does
+        // not. A caller who supplies holdings from another label would
+        // otherwise get them silently dropped here — and a *partial* mismatch
+        // is worse than a total one, because the transfer would go to the
+        // ledger spending inputs the amount does not cover.
+        if holdings.len() != input_holding_cids.len() {
+            let found: Vec<&String> = holdings.iter().map(|h| &h.contract_id).collect();
+            let missing: Vec<&String> = input_holding_cids
+                .iter()
+                .filter(|cid| !found.contains(cid))
+                .collect();
+            return Err(format!(
+                "{} of {} input holdings do not belong to this account: {missing:?}",
+                missing.len(),
+                input_holding_cids.len()
+            ));
+        }
+
+        let total_amount: DamlDecimal = holdings.iter().map(|h| h.amount).sum();
+
+        if total_amount == DamlDecimal::ZERO {
+            return Err("Total amount to consolidate is zero".to_string());
+        }
+
+        let transfer = self_transfer(
+            &params.account,
+            total_amount,
+            params.instrument_id,
+            input_holding_cids,
+            "UTXO consolidation",
+        );
+
+        let additional_information = fetch_factory(
+            &params.registry_url,
+            &params.decentralized_party_id,
+            transfer.clone(),
+            actors.clone(),
+        )
+        .await?;
+
+        let submission = build_submission(
+            actors.clone(),
+            additional_information.choice_context.disclosed_contracts,
+            vec![factory_command(
+                additional_information.factory_id,
+                transfer,
+                actors,
+                additional_information.choice_context.choice_context_data,
+            )],
+        );
+
+        let response_raw =
+            submit_and_wait(&params.ledger_host, &params.access_token, submission).await?;
+
+        let response: ledger::models::JsSubmitAndWaitForTransactionResponse =
+            serde_json::from_str(&response_raw)
+                .map_err(|e| format!("Failed to parse submit response: {e}"))?;
+
+        super::parse_consolidate_response(&response)
+    }
+
+    /// Consolidate only when the UTXO count reaches `threshold`.
+    pub async fn check_and_consolidate(
+        params: CheckConsolidateParams,
+    ) -> Result<super::ConsolidationResult, String> {
+        let owner = require_owner(&params.account, "account")?;
+
+        let utxo_count = super::get_utxo_count(super::GetUtxoCountParams {
+            party: owner,
+            instrument_id: params.instrument_id.clone(),
+            ledger_host: params.ledger_host.clone(),
+            access_token: params.access_token.clone(),
+            // Task 4a. Count the same holdings the consolidation will merge.
+            // Passing `None` here would compare a whole-party count against a
+            // per-account consolidation, and the threshold would fire wrongly.
+            account: Some(params.account.clone()),
+        })
+        .await?;
+
+        log::debug!(
+            "Party has {} UTXOs (threshold: {})",
+            utxo_count,
+            params.threshold
+        );
+
+        if utxo_count < params.threshold {
+            return Ok(super::ConsolidationResult {
+                consolidated: false,
+                holding_cids: vec![],
+                utxos_before: utxo_count,
+                utxos_after: utxo_count,
+            });
+        }
+
+        log::debug!("Threshold met or exceeded. Consolidating UTXOs...");
+
+        let result_cids = consolidate_utxos(ConsolidateParams {
+            account: params.account,
+            instrument_id: params.instrument_id,
+            input_holding_cids: None,
+            ledger_host: params.ledger_host,
+            access_token: params.access_token,
+            registry_url: params.registry_url,
+            decentralized_party_id: params.decentralized_party_id,
+        })
+        .await?;
+
+        Ok(super::ConsolidationResult {
+            consolidated: true,
+            holding_cids: result_cids.clone(),
+            utxos_before: utxo_count,
+            utxos_after: result_cids.len(),
+        })
+    }
+}
+
+#[cfg(test)]
+mod v2_tests {
+    use super::*;
+
+    fn special_account() -> common::transfer::v2::Account {
+        common::transfer::v2::Account {
+            owner: None,
+            provider: None,
+            id: String::new(),
+        }
+    }
+
+    fn consolidate_params(input_holding_cids: Option<Vec<String>>) -> v2::ConsolidateParams {
+        v2::ConsolidateParams {
+            account: common::transfer::v2::Account::basic("alice::1220ab"),
+            instrument_id: common::transfer::InstrumentId {
+                admin: "admin::1220ef".to_string(),
+                id: "CBTC".to_string(),
+            },
+            input_holding_cids,
+            ledger_host: "http://127.0.0.1:1".to_string(),
+            access_token: "unused".to_string(),
+            registry_url: "http://127.0.0.1:1".to_string(),
+            decentralized_party_id: "admin::1220ef".to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn v2_consolidate_rejects_a_special_account_before_any_request() {
+        let err = v2::consolidate_utxos(v2::ConsolidateParams {
+            account: special_account(),
+            instrument_id: common::transfer::InstrumentId {
+                admin: "admin::1220ef".to_string(),
+                id: "CBTC".to_string(),
+            },
+            input_holding_cids: Some(vec!["00abc".to_string(), "00def".to_string()]),
+            ledger_host: "http://127.0.0.1:1".to_string(),
+            access_token: "unused".to_string(),
+            registry_url: "http://127.0.0.1:1".to_string(),
+            decentralized_party_id: "admin::1220ef".to_string(),
+        })
+        .await
+        .unwrap_err();
+
+        assert!(
+            err.contains("account"),
+            "must name the parameter, got {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn v2_check_and_consolidate_rejects_a_special_account_before_any_request() {
+        let err = v2::check_and_consolidate(v2::CheckConsolidateParams {
+            account: special_account(),
+            instrument_id: common::transfer::InstrumentId {
+                admin: "admin::1220ef".to_string(),
+                id: "CBTC".to_string(),
+            },
+            threshold: 10,
+            ledger_host: "http://127.0.0.1:1".to_string(),
+            access_token: "unused".to_string(),
+            registry_url: "http://127.0.0.1:1".to_string(),
+            decentralized_party_id: "admin::1220ef".to_string(),
+        })
+        .await
+        .unwrap_err();
+
+        assert!(
+            err.contains("account"),
+            "must name the parameter, got {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn v2_consolidate_rejects_an_empty_holding_list_before_any_request() {
+        let err = v2::consolidate_utxos(consolidate_params(Some(vec![])))
+            .await
+            .unwrap_err();
+        assert_eq!(err, "No holdings to consolidate");
+    }
+
+    #[tokio::test]
+    async fn v2_consolidate_returns_a_single_holding_untouched() {
+        // The only success path that submits nothing. A regression here would
+        // send a one-input merge-split to the registry.
+        let cids = v2::consolidate_utxos(consolidate_params(Some(vec!["00abc".to_string()])))
+            .await
+            .unwrap();
+        assert_eq!(cids, vec!["00abc".to_string()]);
+    }
+}
 
 #[cfg(test)]
 mod parser_tests {
