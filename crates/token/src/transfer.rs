@@ -614,6 +614,456 @@ fn generate_unique_reference(reference_base: &str, sender: &str, receiver: &str)
     general_purpose::STANDARD.encode(combined.as_bytes())
 }
 
+/// Token Standard V2 forms of the transfer entry points.
+///
+/// `TransferResult` and `SequentialChainedResult` are version-neutral and
+/// shared with V1. `actors` is derived, never passed in: the registry accepts
+/// exactly `[sender.owner]` on the factory choice, checked at
+/// `AllocationFactory.daml:774`.
+pub mod v2 {
+    // None of these four has a user until Step 5, so this step emits
+    // `unused_imports`. `cargo test` still passes; do not run clippy until Step 7.
+    use super::{SequentialChainedResult, TokenState, TransferResult, TransferResultCallback};
+    use crate::utils::{build_submission, ensure_reason_meta, require_owner, submit_and_wait};
+    use std::collections::HashMap;
+
+    pub struct Params {
+        pub transfer: common::transfer::v2::Transfer,
+        pub ledger_host: String,
+        pub access_token: String,
+        pub registry_url: String,
+        pub decentralized_party_id: String,
+    }
+
+    #[derive(Clone, Debug)]
+    pub struct Recipient {
+        pub receiver: common::transfer::v2::Account,
+        pub amount: common::decimal::DamlDecimal,
+        pub reference: Option<String>,
+    }
+
+    pub struct SequentialChainedParams {
+        pub recipients: Vec<Recipient>,
+        pub sender: common::transfer::v2::Account,
+        pub instrument_id: common::transfer::InstrumentId,
+        pub initial_holding_cids: Vec<String>,
+        pub ledger_host: String,
+        pub registry_url: String,
+        pub decentralized_party_id: String,
+        pub reference_base: Option<String>,
+        pub on_transfer_complete: Option<Box<TransferResultCallback>>,
+        pub registry_response: Option<common::transfer_factory::Response>,
+    }
+
+    /// An empty `ExtraArgs`, as the registry expects on a factory request.
+    fn empty_extra_args() -> common::transfer_factory::ExtraArgs {
+        common::transfer_factory::ExtraArgs {
+            context: common::transfer_factory::Context {
+                values: HashMap::new(),
+            },
+            meta: common::transfer_factory::Meta {
+                values: common::transfer_factory::MetaValue {},
+            },
+        }
+    }
+
+    /// The `ExtraArgs` carrying a fetched choice context.
+    fn extra_args_with(
+        context: common::transfer_factory::Context,
+    ) -> common::transfer_factory::ExtraArgs {
+        common::transfer_factory::ExtraArgs {
+            context,
+            meta: common::transfer_factory::Meta {
+                values: common::transfer_factory::MetaValue {},
+            },
+        }
+    }
+
+    /// The V2 exercise command for `TransferFactory_Transfer`.
+    ///
+    /// The choice name is unchanged from V1; only the interface id and the
+    /// choice-argument shape differ.
+    ///
+    /// `pub(crate)` because `split::v2` and `consolidate::v2` reuse it: a split
+    /// and a consolidation are both self-transfers through the same factory.
+    pub(crate) fn factory_command(
+        factory_id: String,
+        transfer: common::transfer::v2::Transfer,
+        actors: Vec<String>,
+        context: common::transfer_factory::Context,
+    ) -> common::submission::Command {
+        common::submission::Command::ExerciseCommand(common::submission::ExerciseCommand {
+            exercise_command: common::submission::ExerciseCommandData {
+                template_id: common::consts::TEMPLATE_TRANSFER_FACTORY_V2.to_string(),
+                contract_id: factory_id,
+                choice: common::consts::CHOICE_TRANSFER_FACTORY_TRANSFER.to_string(),
+                choice_argument: common::submission::ChoiceArgumentsVariations::TransferFactoryV2(
+                    common::transfer_factory::v2::ChoiceArguments {
+                        transfer,
+                        actors,
+                        extra_args: extra_args_with(context),
+                    },
+                ),
+            },
+        })
+    }
+
+    /// Fetch the V2 transfer-factory context for a transfer.
+    ///
+    /// `pub(crate)` for the same reason as [`factory_command`].
+    pub(crate) async fn fetch_factory(
+        registry_url: &str,
+        decentralized_party_id: &str,
+        transfer: common::transfer::v2::Transfer,
+        actors: Vec<String>,
+    ) -> Result<common::transfer_factory::Response, String> {
+        registry::transfer_factory::v2::get(registry::transfer_factory::v2::Params {
+            registry_url: registry_url.to_string(),
+            decentralized_party_id: decentralized_party_id.to_string(),
+            request: registry::transfer_factory::v2::Request {
+                choice_arguments: common::transfer_factory::v2::ChoiceArguments {
+                    transfer,
+                    actors,
+                    extra_args: empty_extra_args(),
+                },
+                exclude_debug_fields: true,
+            },
+        })
+        .await
+    }
+
+    pub async fn submit(mut params: Params) -> Result<(), String> {
+        let sender = require_owner(&params.transfer.sender, "transfer.sender")?;
+        let actors = vec![sender.clone()];
+
+        if params.transfer.input_holding_cids.is_none() {
+            let contracts = crate::active_contracts::get(crate::active_contracts::Params {
+                ledger_host: params.ledger_host.clone(),
+                party: sender.clone(),
+                access_token: params.access_token.clone(),
+                instrument_id: params.transfer.instrument_id.clone(),
+                // Task 4a. The inputs must come from the sender's own account,
+                // not from every label the sender owns.
+                account: Some(params.transfer.sender.clone()),
+            })
+            .await?;
+
+            params.transfer.input_holding_cids = Some(
+                contracts
+                    .into_iter()
+                    .map(|contract| contract.created_event.contract_id)
+                    .collect(),
+            );
+        }
+
+        params.transfer.meta = ensure_reason_meta(params.transfer.meta);
+
+        let additional_information = fetch_factory(
+            &params.registry_url,
+            &params.decentralized_party_id,
+            params.transfer.clone(),
+            actors.clone(),
+        )
+        .await?;
+
+        let command = factory_command(
+            additional_information.factory_id,
+            params.transfer,
+            actors.clone(),
+            additional_information.choice_context.choice_context_data,
+        );
+
+        let submission = build_submission(
+            actors,
+            additional_information.choice_context.disclosed_contracts,
+            vec![command],
+        );
+
+        submit_and_wait(&params.ledger_host, &params.access_token, submission).await?;
+
+        Ok(())
+    }
+
+    /// The derived sender for a chained run, or the error that rejects it.
+    ///
+    /// Split out from [`submit_sequential_chained`] so a unit test can reach
+    /// the check: the entry point needs a live `TokenState`, which a unit test
+    /// cannot build.
+    pub(crate) fn validate(params: &SequentialChainedParams) -> Result<String, String> {
+        if params.recipients.is_empty() {
+            return Err("No recipients to process".to_string());
+        }
+        require_owner(&params.sender, "sender")
+    }
+
+    /// Submit many transfers sequentially, chaining each transfer's change
+    /// output into the next. The registry context is fetched once and reused.
+    ///
+    /// Mirrors [`super::submit_sequential_chained`]. `TransferResult.receiver`
+    /// carries the receiver account's owner.
+    pub async fn submit_sequential_chained(
+        params: SequentialChainedParams,
+        token_state: &mut TokenState,
+    ) -> Result<SequentialChainedResult, String> {
+        let sender = validate(&params)?;
+        let actors = vec![sender.clone()];
+
+        log::debug!(
+            "Starting sequential chained V2 transfers: {} transfers from {}",
+            params.recipients.len(),
+            sender
+        );
+
+        let additional_information = match params.registry_response {
+            Some(registry_response) => registry_response,
+            None => {
+                let execute_before_hours = 30 * 24; // 30 days
+
+                let template_transfer = common::transfer::v2::Transfer {
+                    sender: params.sender.clone(),
+                    receiver: params.recipients[0].receiver.clone(),
+                    amount: params.recipients[0].amount,
+                    instrument_id: params.instrument_id.clone(),
+                    requested_at: chrono::Utc::now().to_rfc3339(),
+                    execute_before: (chrono::Utc::now()
+                        + chrono::Duration::hours(execute_before_hours))
+                    .to_rfc3339(),
+                    input_holding_cids: Some(params.initial_holding_cids.clone()),
+                    meta: Some(crate::utils::chained_transfer_meta(None)),
+                };
+
+                log::debug!("Fetching V2 transfer factory context from registry (once)...");
+
+                fetch_factory(
+                    &params.registry_url,
+                    &params.decentralized_party_id,
+                    template_transfer,
+                    actors.clone(),
+                )
+                .await?
+            }
+        };
+
+        let factory_id = additional_information.factory_id;
+        let choice_context_data = additional_information.choice_context.choice_context_data;
+        let disclosed_contracts = additional_information.choice_context.disclosed_contracts;
+
+        log::debug!("Registry context fetched successfully");
+
+        let mut results = Vec::new();
+        let mut current_holding_cids = params.initial_holding_cids;
+        let mut successful_count = 0;
+        let mut failed_count = 0;
+
+        let total_transfers = params.recipients.len();
+
+        for (idx, recipient) in params.recipients.into_iter().enumerate() {
+            // `receiver` is reported in every TransferResult the loop can
+            // still identify, so derive it before the first early continue.
+            // The one branch where the derivation itself fails reports an
+            // empty `receiver` and names the reason in `error`.
+            let receiver = match require_owner(&recipient.receiver, "recipient.receiver") {
+                Ok(receiver) => receiver,
+                Err(error_msg) => {
+                    log::error!("{}", error_msg);
+                    let result = TransferResult {
+                        success: false,
+                        transfer_index: idx,
+                        receiver: String::new(),
+                        amount: recipient.amount.to_string(),
+                        transfer_offer_cid: None,
+                        update_id: None,
+                        reference: None,
+                        raw_response: None,
+                        error: Some(error_msg),
+                    };
+                    if let Some(ref callback) = params.on_transfer_complete {
+                        callback(result.clone()).await;
+                    }
+                    results.push(result);
+                    failed_count += 1;
+                    continue;
+                }
+            };
+
+            let transfer_num = idx + 1;
+            log::trace!(
+                "\n[{}/{}] Transferring {} to {}...",
+                transfer_num,
+                total_transfers,
+                recipient.amount,
+                receiver
+            );
+
+            if current_holding_cids.is_empty() {
+                let error_msg = "No UTXOs available for transfer".to_string();
+                log::error!("{}", error_msg);
+                let result = TransferResult {
+                    success: false,
+                    transfer_index: idx,
+                    receiver: receiver.clone(),
+                    amount: recipient.amount.to_string(),
+                    transfer_offer_cid: None,
+                    update_id: None,
+                    reference: None,
+                    raw_response: None,
+                    error: Some(error_msg),
+                };
+                if let Some(ref callback) = params.on_transfer_complete {
+                    callback(result.clone()).await;
+                }
+                results.push(result);
+                failed_count += 1;
+                continue;
+            }
+
+            let current_token = match token_state.get_fresh_token().await {
+                Ok(token) => token,
+                Err(e) => {
+                    let error_msg = format!("Failed to get fresh token: {}", e);
+                    log::error!("{}", error_msg);
+                    let result = TransferResult {
+                        success: false,
+                        transfer_index: idx,
+                        receiver: receiver.clone(),
+                        amount: recipient.amount.to_string(),
+                        transfer_offer_cid: None,
+                        update_id: None,
+                        reference: None,
+                        raw_response: None,
+                        error: Some(error_msg),
+                    };
+                    if let Some(ref callback) = params.on_transfer_complete {
+                        callback(result.clone()).await;
+                    }
+                    results.push(result);
+                    failed_count += 1;
+                    continue;
+                }
+            };
+
+            let mut transfer_reference = params.reference_base.as_ref().map(|reference_base| {
+                super::generate_unique_reference(reference_base, &sender, &receiver)
+            });
+            if let Some(ref unique_ref) = recipient.reference {
+                transfer_reference = Some(unique_ref.clone());
+            }
+
+            let transfer = common::transfer::v2::Transfer {
+                sender: params.sender.clone(),
+                receiver: recipient.receiver.clone(),
+                amount: recipient.amount,
+                instrument_id: params.instrument_id.clone(),
+                requested_at: chrono::Utc::now().to_rfc3339(),
+                execute_before: (chrono::Utc::now() + chrono::Duration::hours(168)).to_rfc3339(),
+                input_holding_cids: Some(current_holding_cids.clone()),
+                meta: Some(crate::utils::chained_transfer_meta(
+                    transfer_reference.as_deref(),
+                )),
+            };
+
+            let submission = build_submission(
+                actors.clone(),
+                disclosed_contracts.clone(),
+                vec![factory_command(
+                    factory_id.clone(),
+                    transfer,
+                    actors.clone(),
+                    choice_context_data.clone(),
+                )],
+            );
+
+            match submit_and_wait(&params.ledger_host, &current_token, submission).await {
+                Ok(response_raw) => match super::parse_transfer_response(&response_raw) {
+                    Ok((sender_change_cids, transfer_offer_cid, update_id)) => {
+                        log::debug!(
+                            "Transfer successful | Transfer Offer: {} | Update ID: {} | Change UTXOs: {} remaining",
+                            transfer_offer_cid,
+                            update_id,
+                            sender_change_cids.len()
+                        );
+                        let result = TransferResult {
+                            success: true,
+                            transfer_index: idx,
+                            receiver: receiver.clone(),
+                            amount: recipient.amount.to_string(),
+                            transfer_offer_cid: Some(transfer_offer_cid),
+                            update_id: Some(update_id),
+                            reference: transfer_reference.clone(),
+                            raw_response: Some(response_raw.clone()),
+                            error: None,
+                        };
+                        if let Some(ref callback) = params.on_transfer_complete {
+                            callback(result.clone()).await;
+                        }
+                        results.push(result);
+                        successful_count += 1;
+                        current_holding_cids = sender_change_cids;
+                    }
+                    Err(e) => {
+                        let error_msg = format!("Failed to parse transfer response: {}", e);
+                        log::error!(
+                            "{} | Note: Change UTXOs preserved for next transfer",
+                            error_msg
+                        );
+                        let result = TransferResult {
+                            success: false,
+                            transfer_index: idx,
+                            receiver: receiver.clone(),
+                            amount: recipient.amount.to_string(),
+                            transfer_offer_cid: None,
+                            update_id: None,
+                            reference: transfer_reference.clone(),
+                            raw_response: Some(response_raw),
+                            error: Some(error_msg),
+                        };
+                        if let Some(ref callback) = params.on_transfer_complete {
+                            callback(result.clone()).await;
+                        }
+                        results.push(result);
+                        failed_count += 1;
+                    }
+                },
+                Err(e) => {
+                    let error_msg = format!("Ledger submission failed: {}", e);
+                    log::error!(
+                        "{} | Note: Change UTXOs preserved, will retry next transfer",
+                        error_msg
+                    );
+                    let result = TransferResult {
+                        success: false,
+                        transfer_index: idx,
+                        receiver: receiver.clone(),
+                        amount: recipient.amount.to_string(),
+                        transfer_offer_cid: None,
+                        update_id: None,
+                        reference: transfer_reference.clone(),
+                        raw_response: None,
+                        error: Some(error_msg),
+                    };
+                    if let Some(ref callback) = params.on_transfer_complete {
+                        callback(result.clone()).await;
+                    }
+                    results.push(result);
+                    failed_count += 1;
+                }
+            }
+        }
+
+        log::debug!(
+            "Transfer Summary: Successful: {}, Failed: {}",
+            successful_count,
+            failed_count
+        );
+
+        Ok(SequentialChainedResult {
+            results,
+            successful_count,
+            failed_count,
+        })
+    }
+}
+
 #[cfg(test)]
 mod parser_tests {
     //! Pure-data fixture tests for the flat-event parser used by
@@ -722,5 +1172,157 @@ mod parser_tests {
             err.contains("Failed to find updateId"),
             "unexpected error: {err}"
         );
+    }
+}
+
+#[cfg(test)]
+mod v2_guard_tests {
+    use super::*;
+
+    fn special_account() -> common::transfer::v2::Account {
+        common::transfer::v2::Account {
+            owner: None,
+            provider: None,
+            id: String::new(),
+        }
+    }
+
+    fn v2_transfer_from(sender: common::transfer::v2::Account) -> common::transfer::v2::Transfer {
+        common::transfer::v2::Transfer {
+            sender,
+            receiver: common::transfer::v2::Account::basic("bob::1220cd"),
+            amount: common::decimal::DamlDecimal::parse("1.0").unwrap(),
+            instrument_id: common::transfer::InstrumentId {
+                admin: "admin::1220ef".to_string(),
+                id: "CBTC".to_string(),
+            },
+            requested_at: "2026-09-01T00:00:00Z".to_string(),
+            execute_before: "2026-09-08T00:00:00Z".to_string(),
+            input_holding_cids: None,
+            meta: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn v2_submit_rejects_a_special_sender_before_any_request() {
+        let err = v2::submit(v2::Params {
+            transfer: v2_transfer_from(special_account()),
+            // Unroutable on purpose: if the guard let the call through, the
+            // error would name a connection failure instead.
+            ledger_host: "http://127.0.0.1:1".to_string(),
+            access_token: "unused".to_string(),
+            registry_url: "http://127.0.0.1:1".to_string(),
+            decentralized_party_id: "admin::1220ef".to_string(),
+        })
+        .await
+        .unwrap_err();
+
+        assert!(
+            err.contains("transfer.sender"),
+            "the guard must name the parameter, got {err}"
+        );
+    }
+    #[test]
+    fn v2_factory_command_names_the_v2_interface_and_choice() {
+        let command = v2::factory_command(
+            "00factory".to_string(),
+            v2_transfer_from(common::transfer::v2::Account::basic("alice::1220ab")),
+            vec!["alice::1220ab".to_string()],
+            common::transfer_factory::Context {
+                values: std::collections::HashMap::new(),
+            },
+        );
+
+        let json = serde_json::to_value(&command).unwrap();
+        let exercise = &json["ExerciseCommand"];
+
+        assert_eq!(
+            exercise["templateId"],
+            serde_json::json!(common::consts::TEMPLATE_TRANSFER_FACTORY_V2),
+            "a V2 transfer must name the V2 TransferFactory interface"
+        );
+        assert_eq!(
+            exercise["choice"],
+            serde_json::json!("TransferFactory_Transfer"),
+            "the choice name is version-neutral and must not gain a V2 suffix"
+        );
+        assert_eq!(exercise["contractId"], serde_json::json!("00factory"));
+
+        let args = &exercise["choiceArgument"];
+        assert_eq!(args["actors"], serde_json::json!(["alice::1220ab"]));
+        assert!(
+            args.get("expectedAdmin").is_none(),
+            "V2 drops expectedAdmin; sending it would fail the choice"
+        );
+        assert_eq!(
+            args["transfer"]["sender"]["owner"],
+            serde_json::json!("alice::1220ab"),
+            "the V2 sender is an Account object, not a bare party"
+        );
+        assert_eq!(
+            args["extraArgs"]["context"]["values"],
+            serde_json::json!({})
+        );
+        assert_eq!(args["extraArgs"]["meta"]["values"], serde_json::json!({}));
+    }
+
+    fn chained_params(
+        sender: common::transfer::v2::Account,
+        recipients: Vec<v2::Recipient>,
+    ) -> v2::SequentialChainedParams {
+        v2::SequentialChainedParams {
+            recipients,
+            sender,
+            instrument_id: common::transfer::InstrumentId {
+                admin: "admin::1220ef".to_string(),
+                id: "CBTC".to_string(),
+            },
+            initial_holding_cids: vec!["00abc".to_string()],
+            ledger_host: "http://127.0.0.1:1".to_string(),
+            registry_url: "http://127.0.0.1:1".to_string(),
+            decentralized_party_id: "admin::1220ef".to_string(),
+            reference_base: None,
+            on_transfer_complete: None,
+            registry_response: None,
+        }
+    }
+
+    fn one_recipient() -> Vec<v2::Recipient> {
+        vec![v2::Recipient {
+            receiver: common::transfer::v2::Account::basic("bob::1220cd"),
+            amount: common::decimal::DamlDecimal::parse("1.0").unwrap(),
+            reference: None,
+        }]
+    }
+
+    #[test]
+    fn v2_chained_rejects_a_special_sender() {
+        let err = v2::validate(&chained_params(special_account(), one_recipient())).unwrap_err();
+        assert!(
+            err.contains("sender"),
+            "the guard must name the parameter, got {err}"
+        );
+    }
+
+    #[test]
+    fn v2_chained_rejects_an_empty_recipient_list() {
+        // A distinct path to the same function: the empty check precedes the
+        // owner check, so a test per outcome would miss one of the two.
+        let err = v2::validate(&chained_params(
+            common::transfer::v2::Account::basic("alice::1220ab"),
+            vec![],
+        ))
+        .unwrap_err();
+        assert!(err.contains("No recipients"), "got {err}");
+    }
+
+    #[test]
+    fn v2_chained_accepts_a_regular_sender() {
+        let sender = v2::validate(&chained_params(
+            common::transfer::v2::Account::basic("alice::1220ab"),
+            one_recipient(),
+        ))
+        .unwrap();
+        assert_eq!(sender, "alice::1220ab");
     }
 }
