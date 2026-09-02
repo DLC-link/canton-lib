@@ -22,13 +22,8 @@ pub fn factory_url(registry_url: &str, decentralized_party_id: &str) -> String {
 }
 
 pub async fn get(params: Params) -> Result<common::transfer_factory::Response, String> {
-    let client = reqwest::Client::new();
-
     let url = factory_url(&params.registry_url, &params.decentralized_party_id);
-    let response = client
-        .post(url)
-        .json(&params.request)
-        .send()
+    let response = crate::post_json(&url, &params.request)
         .await
         .map_err(|e| format!("{}", e))?;
 
@@ -79,13 +74,8 @@ pub mod v2 {
     }
 
     pub async fn get(params: Params) -> Result<common::transfer_factory::Response, String> {
-        let client = reqwest::Client::new();
-
         let url = factory_url(&params.registry_url, &params.decentralized_party_id);
-        let response = client
-            .post(url)
-            .json(&params.request)
-            .send()
+        let response = crate::post_json(&url, &params.request)
             .await
             .map_err(|e| format!("{e}"))?;
 

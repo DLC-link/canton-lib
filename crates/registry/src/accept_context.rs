@@ -68,11 +68,7 @@ pub async fn get(params: Params) -> Result<Response, String> {
         &params.transfer_offer_contract_id,
     );
 
-    let client = reqwest::Client::new();
-    let response = client
-        .post(&url)
-        .json(&params.request)
-        .send()
+    let response = crate::post_json(&url, &params.request)
         .await
         .map_err(|e| format!("Failed to send request to registry: {e}"))?;
 
@@ -154,11 +150,7 @@ pub mod v2 {
             params.choice,
         );
 
-        let client = reqwest::Client::new();
-        let response = client
-            .post(&url)
-            .json(&params.request)
-            .send()
+        let response = crate::post_json(&url, &params.request)
             .await
             .map_err(|e| format!("Failed to send request to registry: {e}"))?;
 
