@@ -732,6 +732,10 @@ pub mod v2 {
 
     pub async fn submit(mut params: Params) -> Result<(), String> {
         let sender = require_owner(&params.transfer.sender, "transfer.sender")?;
+        // The receiver is guarded too, so this entry point agrees with
+        // `submit_sequential_chained`, which guards every recipient. Without
+        // it a caller could send funds to a registry-managed account.
+        require_owner(&params.transfer.receiver, "transfer.receiver")?;
         let actors = vec![sender.clone()];
 
         if params.transfer.input_holding_cids.is_none() {
@@ -1218,6 +1222,28 @@ mod v2_guard_tests {
         assert!(
             err.contains("transfer.sender"),
             "the guard must name the parameter, got {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn v2_submit_rejects_a_special_receiver_before_any_request() {
+        let mut transfer = v2_transfer_from(common::transfer::v2::Account::basic("alice::1220ab"));
+        transfer.receiver = special_account();
+
+        let err = v2::submit(v2::Params {
+            transfer,
+            // Unroutable on purpose, as above.
+            ledger_host: "http://127.0.0.1:1".to_string(),
+            access_token: "unused".to_string(),
+            registry_url: "http://127.0.0.1:1".to_string(),
+            decentralized_party_id: "admin::1220ef".to_string(),
+        })
+        .await
+        .unwrap_err();
+
+        assert!(
+            err.contains("transfer.receiver"),
+            "the guard must name the offending field, got {err}"
         );
     }
     #[test]
