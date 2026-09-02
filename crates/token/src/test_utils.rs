@@ -132,11 +132,6 @@ impl IntegrationTestState {
         .access_token
     }
 
-    pub(crate) async fn client_for(&self, party: &str) -> TokenClient {
-        self.client_for_version(party, common::TokenStandardVersion::V1)
-            .await
-    }
-
     pub(crate) async fn client_for_version(
         &self,
         party: &str,

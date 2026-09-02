@@ -1354,10 +1354,22 @@ mod integration_tests {
     // second run would execute identical code.
     #[tokio::test]
     #[ignore = "integration test: requires live devnet and env vars"]
-    async fn integration_utxo_count() {
+    async fn integration_utxo_count_v1() {
+        utxo_count(common::TokenStandardVersion::V1).await;
+    }
+
+    /// `utxo_count` reads through `holdings`, which dispatches on the version:
+    /// a V2 client filters on its own account label, a V1 client does not.
+    #[tokio::test]
+    #[ignore = "integration test: requires live devnet and env vars"]
+    async fn integration_utxo_count_v2() {
+        utxo_count(common::TokenStandardVersion::V2).await;
+    }
+
+    async fn utxo_count(version: common::TokenStandardVersion) {
         let _guard = SERIAL_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let state = IntegrationTestState::from_env();
-        let mut p1 = state.client_for(&state.party_1).await;
+        let mut p1 = state.client_for_version(&state.party_1, version).await;
 
         let count = p1.utxo_count().await.expect("utxo_count failed");
         let holdings = p1.holdings().await.expect("holdings failed");
