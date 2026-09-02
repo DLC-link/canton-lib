@@ -132,6 +132,11 @@ impl TokenClient {
     }
 
     /// The party's active, unlocked holdings (UTXOs) of this token.
+    ///
+    /// A V2 client reads its own account, so this returns exactly the holdings
+    /// its `split`, `consolidate` and `distribute` spend. A V1 client has no
+    /// account label to filter on and reads every holding the party owns,
+    /// which is what it did before Token Standard V2.
     pub async fn holdings(&mut self) -> Result<Vec<ledger::models::JsActiveContract>, String> {
         let access_token = self.fresh_token().await?;
         active_contracts::get(active_contracts::Params {
@@ -139,9 +144,24 @@ impl TokenClient {
             party: self.config.party.clone(),
             access_token,
             instrument_id: self.config.instrument.clone(),
-            account: None,
+            account: Self::read_account_for(&self.config),
         })
         .await
+    }
+
+    /// The account filter this client's reads use: `None` on V1, which keeps
+    /// every holding the party owns, and the client's own account on V2.
+    ///
+    /// Split out from [`Self::holdings`] so a unit test can reach the choice.
+    /// `holdings` itself cannot be reached by one, because it queries the
+    /// active-contract set over a websocket.
+    pub(crate) fn read_account_for(
+        config: &TokenClientConfig,
+    ) -> Option<common::transfer::v2::Account> {
+        match config.version {
+            common::TokenStandardVersion::V1 => None,
+            common::TokenStandardVersion::V2 => Some(Self::account_for(config)),
+        }
     }
 
     /// Total spendable balance: the sum over all unlocked holdings.
@@ -502,24 +522,16 @@ impl TokenClient {
             }
             common::TokenStandardVersion::V2 => {
                 let account = self.account();
-                let access_token = self.fresh_token().await?;
-                // Not `self.holdings()`: that passes `account: None`, and
-                // handing label-blind cids to a basic-account self-transfer
-                // would sweep a labelled holding into it. Decision 11.
                 let input_holding_cids = match params.input_holding_cids {
                     Some(cids) => cids,
-                    None => active_contracts::get(active_contracts::Params {
-                        ledger_host: self.config.ledger_host.clone(),
-                        party: self.config.party.clone(),
-                        access_token: access_token.clone(),
-                        instrument_id: self.config.instrument.clone(),
-                        account: Some(account.clone()),
-                    })
-                    .await?
-                    .into_iter()
-                    .map(|c| c.created_event.contract_id)
-                    .collect(),
+                    None => self
+                        .holdings()
+                        .await?
+                        .into_iter()
+                        .map(|c| c.created_event.contract_id)
+                        .collect(),
                 };
+                let access_token = self.fresh_token().await?;
                 split::v2::submit(split::v2::Params {
                     account,
                     amounts: params.amounts,
@@ -750,6 +762,22 @@ mod dispatch_tests {
         assert_eq!(
             TokenClient::account_for(&config(&server, common::TokenStandardVersion::V2)),
             common::transfer::v2::Account::basic(PARTY)
+        );
+    }
+
+    #[tokio::test]
+    async fn only_a_v2_client_filters_its_reads_by_account() {
+        let server = stub().await;
+
+        assert_eq!(
+            TokenClient::read_account_for(&config(&server, common::TokenStandardVersion::V1)),
+            None,
+            "a V1 client must keep reading every holding the party owns"
+        );
+        assert_eq!(
+            TokenClient::read_account_for(&config(&server, common::TokenStandardVersion::V2)),
+            Some(common::transfer::v2::Account::basic(PARTY)),
+            "a V2 client must read the same account its spends draw from"
         );
     }
 

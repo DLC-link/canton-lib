@@ -51,6 +51,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   holding carries its label in the metadata of its V1 interface view. `None`
   keeps every holding the party owns, which is what every V1 caller wants and
   exactly what this function did before.
+- `TokenClient::holdings`, `balance` and `utxo_count` filter on the client's
+  own account when its version is `V2`. A V2 client therefore reads exactly
+  the holdings its `split`, `consolidate` and `distribute` spend, and its
+  `utxo_count` agrees with the count its `check_and_consolidate` compares
+  against the threshold. A V1 client has no account label to filter on and
+  reads every holding the party owns, as it did before.
 
 ### Notes
 
