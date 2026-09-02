@@ -2,7 +2,7 @@ use crate::active_contracts;
 use crate::holding::Holding;
 use common::decimal::DamlDecimal;
 use ledger::models::JsSubmitAndWaitForTransactionResponse;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ops::Add;
 
 /// Result of a consolidation operation
@@ -129,7 +129,11 @@ pub async fn get_utxo_count(params: GetUtxoCountParams) -> Result<usize, String>
 /// log::debug!("Consolidated into {} UTXO(s)", result_cids.len());
 /// ```
 pub async fn consolidate_utxos(params: ConsolidateParams) -> Result<Vec<String>, String> {
-    // Get the holdings to consolidate
+    // One snapshot of the active-contract set serves both the input list and
+    // the pricing below. Reading twice let the set change in between, which
+    // priced a different set of holdings than the transfer went on to spend.
+    let mut snapshot = None;
+
     let input_holding_cids = if let Some(cids) = params.input_holding_cids {
         cids
     } else {
@@ -142,10 +146,12 @@ pub async fn consolidate_utxos(params: ConsolidateParams) -> Result<Vec<String>,
         })
         .await?;
 
-        contracts
+        let cids = contracts
             .iter()
             .map(|c| c.created_event.contract_id.clone())
-            .collect()
+            .collect();
+        snapshot = Some(contracts);
+        cids
     };
 
     if input_holding_cids.is_empty() {
@@ -157,21 +163,28 @@ pub async fn consolidate_utxos(params: ConsolidateParams) -> Result<Vec<String>,
         return Ok(input_holding_cids);
     }
 
-    // Calculate total amount to consolidate
-    let contracts = active_contracts::get(active_contracts::Params {
-        ledger_host: params.ledger_host.clone(),
-        party: params.party.clone(),
-        access_token: params.access_token.clone(),
-        instrument_id: params.instrument_id.clone(),
-        account: None,
-    })
-    .await?;
+    // Only a caller that supplied its own cids still owes a read.
+    let contracts = match snapshot {
+        Some(contracts) => contracts,
+        None => {
+            active_contracts::get(active_contracts::Params {
+                ledger_host: params.ledger_host.clone(),
+                party: params.party.clone(),
+                access_token: params.access_token.clone(),
+                instrument_id: params.instrument_id.clone(),
+                account: None,
+            })
+            .await?
+        }
+    };
 
     let zero = DamlDecimal::ZERO;
 
+    let wanted: HashSet<&str> = input_holding_cids.iter().map(String::as_str).collect();
+
     let holdings: Vec<Holding> = contracts
         .iter()
-        .filter(|c| input_holding_cids.contains(&c.created_event.contract_id))
+        .filter(|c| wanted.contains(c.created_event.contract_id.as_str()))
         .map(Holding::from_active_contract)
         .collect::<Result<Vec<_>, _>>()?;
 
@@ -401,6 +414,7 @@ pub mod v2 {
     use crate::transfer::v2::{factory_command, fetch_factory};
     use crate::utils::{build_submission, require_owner, submit_and_wait};
     use common::decimal::DamlDecimal;
+    use std::collections::HashSet;
 
     pub struct ConsolidateParams {
         pub account: common::transfer::v2::Account,
@@ -428,6 +442,11 @@ pub mod v2 {
         let owner = require_owner(&params.account, "account")?;
         let actors = vec![owner.clone()];
 
+        // One snapshot serves both the input list and the pricing below. Two
+        // reads let a holding archive in between, and the mismatch guard then
+        // reported it as an account mismatch, which is the wrong diagnosis.
+        let mut snapshot = None;
+
         let input_holding_cids = if let Some(cids) = params.input_holding_cids {
             cids
         } else {
@@ -441,10 +460,12 @@ pub mod v2 {
             })
             .await?;
 
-            contracts
+            let cids = contracts
                 .iter()
                 .map(|c| c.created_event.contract_id.clone())
-                .collect()
+                .collect();
+            snapshot = Some(contracts);
+            cids
         };
 
         if input_holding_cids.is_empty() {
@@ -455,18 +476,26 @@ pub mod v2 {
             return Ok(input_holding_cids);
         }
 
-        let contracts = crate::active_contracts::get(crate::active_contracts::Params {
-            ledger_host: params.ledger_host.clone(),
-            party: owner,
-            access_token: params.access_token.clone(),
-            instrument_id: params.instrument_id.clone(),
-            account: Some(params.account.clone()),
-        })
-        .await?;
+        // Only a caller that supplied its own cids still owes a read.
+        let contracts = match snapshot {
+            Some(contracts) => contracts,
+            None => {
+                crate::active_contracts::get(crate::active_contracts::Params {
+                    ledger_host: params.ledger_host.clone(),
+                    party: owner,
+                    access_token: params.access_token.clone(),
+                    instrument_id: params.instrument_id.clone(),
+                    account: Some(params.account.clone()),
+                })
+                .await?
+            }
+        };
+
+        let wanted: HashSet<&str> = input_holding_cids.iter().map(String::as_str).collect();
 
         let holdings: Vec<crate::holding::Holding> = contracts
             .iter()
-            .filter(|c| input_holding_cids.contains(&c.created_event.contract_id))
+            .filter(|c| wanted.contains(c.created_event.contract_id.as_str()))
             .map(crate::holding::Holding::from_active_contract)
             .collect::<Result<Vec<_>, _>>()?;
 
@@ -476,10 +505,10 @@ pub mod v2 {
         // is worse than a total one, because the transfer would go to the
         // ledger spending inputs the amount does not cover.
         if holdings.len() != input_holding_cids.len() {
-            let found: Vec<&String> = holdings.iter().map(|h| &h.contract_id).collect();
+            let found: HashSet<&str> = holdings.iter().map(|h| h.contract_id.as_str()).collect();
             let missing: Vec<&String> = input_holding_cids
                 .iter()
-                .filter(|cid| !found.contains(cid))
+                .filter(|cid| !found.contains(cid.as_str()))
                 .collect();
             return Err(format!(
                 "{} of {} input holdings do not belong to this account: {missing:?}",
