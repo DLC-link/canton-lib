@@ -759,6 +759,11 @@ mod v2_tests {
             "accept must fetch its own context route, got {}",
             sent.context_path
         );
+        assert!(
+            sent.context_path.contains("/transfer-instruction/v2/"),
+            "a V2 operation must fetch the V2 route, got {}",
+            sent.context_path
+        );
         assert_eq!(sent.actors, vec!["bob::1220cd".to_string()]);
         assert_eq!(sent.act_as, vec!["bob::1220cd".to_string()]);
     }

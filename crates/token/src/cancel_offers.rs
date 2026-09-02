@@ -997,6 +997,65 @@ mod v2_tests {
         server
     }
 
+    /// A server whose submissions answer `statuses` in order, then 200.
+    ///
+    /// A single failure count cannot express a mixed retry, where one offer
+    /// succeeds and another fails, so this drives the sequence directly.
+    async fn withdraw_stub_sequence(statuses: &[u16]) -> MockServer {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path_regex(r".*/choice-contexts/withdraw$"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "choiceContextData": { "values": {} },
+                "disclosedContracts": []
+            })))
+            .mount(&server)
+            .await;
+
+        for (index, status) in statuses.iter().enumerate() {
+            Mock::given(method("POST"))
+                .and(path(SUBMIT_PATH))
+                .respond_with(ResponseTemplate::new(*status).set_body_json(serde_json::json!({})))
+                .up_to_n_times(1)
+                .with_priority(u8::try_from(index + 1).expect("few statuses"))
+                .mount(&server)
+                .await;
+        }
+
+        Mock::given(method("POST"))
+            .and(path(SUBMIT_PATH))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({})))
+            .with_priority(u8::MAX)
+            .mount(&server)
+            .await;
+
+        server
+    }
+
+    /// How many commands each submission carried, in order.
+    ///
+    /// This is what separates a per-offer retry from a whole-batch retry: both
+    /// send three submissions for a failed pair, but only the buggy one sends
+    /// two commands twice.
+    async fn submitted_command_counts(server: &MockServer) -> Vec<usize> {
+        server
+            .received_requests()
+            .await
+            .expect("wiremock records requests by default")
+            .iter()
+            .filter(|r| r.url.path() == SUBMIT_PATH)
+            .map(|r| {
+                let body: serde_json::Value =
+                    serde_json::from_slice(&r.body).expect("the submission must be JSON");
+                body["commands"]["commands"]
+                    .as_array()
+                    .map(|c| c.len())
+                    .unwrap_or_default()
+            })
+            .collect()
+    }
+
     fn batch_params(server: &MockServer, contract_ids: Vec<String>) -> v2::WithdrawBatchParams {
         v2::WithdrawBatchParams {
             contract_ids,
@@ -1081,9 +1140,49 @@ mod v2_tests {
         assert_eq!(result.successful_count, 2);
         assert_eq!(result.failed_count, 0);
         assert_eq!(
-            submit_count(&server).await,
-            3,
-            "one failed batch submission, then one submission per offer"
+            submitted_command_counts(&server).await,
+            vec![2, 1, 1],
+            "the failed batch carries both offers, then each retry carries one"
+        );
+    }
+
+    #[tokio::test]
+    async fn v2_withdraw_batch_chunks_at_the_batch_size() {
+        let server = withdraw_stub(0).await;
+        let ids: Vec<String> = (0..6).map(|i| format!("00offer{i}")).collect();
+
+        let result = v2::withdraw_batch(batch_params(&server, ids))
+            .await
+            .expect("every batch succeeds");
+
+        assert_eq!(result.successful_count, 6);
+        assert_eq!(result.failed_count, 0);
+        assert_eq!(
+            submitted_command_counts(&server).await,
+            vec![5, 1],
+            "six offers must split into a full batch of five and a remainder"
+        );
+    }
+
+    #[tokio::test]
+    async fn v2_withdraw_batch_reports_a_mixed_retry_offer_by_offer() {
+        // The batch fails, then the first offer succeeds and the second does
+        // not. A run that counted per batch rather than per offer would report
+        // both the same way.
+        let server = withdraw_stub_sequence(&[500, 200, 500]).await;
+        let ids = vec!["00one".to_string(), "00two".to_string()];
+
+        let result = v2::withdraw_batch(batch_params(&server, ids))
+            .await
+            .expect("a partly failed batch is reported, not returned as an error");
+
+        assert_eq!(result.successful_count, 1);
+        assert_eq!(result.failed_count, 1);
+        assert!(result.results[0].success, "the first offer succeeded");
+        assert!(!result.results[1].success, "the second offer failed");
+        assert!(
+            result.results[1].error.is_some(),
+            "the failed offer must carry its reason"
         );
     }
 
@@ -1134,6 +1233,11 @@ mod v2_tests {
         assert!(
             sent.context_path.ends_with("/choice-contexts/withdraw"),
             "withdraw must fetch its own context route, got {}",
+            sent.context_path
+        );
+        assert!(
+            sent.context_path.contains("/transfer-instruction/v2/"),
+            "a V2 operation must fetch the V2 route, got {}",
             sent.context_path
         );
         assert_eq!(sent.actors, vec!["alice::1220ab".to_string()]);

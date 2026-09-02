@@ -173,7 +173,14 @@ impl TokenClient {
             .fold(DamlDecimal::ZERO, |acc, amount| acc.add(amount)))
     }
 
-    /// Number of UTXOs currently held (Canton soft limit: 10 per party per token).
+    /// Number of UTXOs currently held.
+    ///
+    /// Counted over whatever [`Self::holdings`] returns, so a V1 client counts
+    /// every holding the party owns and a V2 client counts only its own
+    /// account's. Canton's soft limit of 10 is per party per token, so on a V2
+    /// client this number can sit under the limit while the party as a whole
+    /// sits above it. `check_and_consolidate` compares its threshold against
+    /// the same per-account count, so the two agree.
     pub async fn utxo_count(&mut self) -> Result<usize, String> {
         Ok(self.holdings().await?.len())
     }
