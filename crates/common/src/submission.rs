@@ -194,6 +194,43 @@ mod tests {
     }
 
     #[test]
+    fn an_allocation_payload_does_not_deserialize_as_accept() {
+        // The declaration comment's first claim. `Accept` requires only
+        // `extraArgs`, which an allocation payload also carries, so the order
+        // of these two is what keeps them apart.
+        let payload = json!({
+            "expectedAdmin": "admin::1220ef",
+            "allocation": {
+                "settlement": {
+                    "executor": "exec::1220ab",
+                    "settlementRef": { "id": "ref-1", "cid": null },
+                    "requestedAt": "2026-09-01T00:00:00Z",
+                    "allocateBefore": "2026-09-08T00:00:00Z",
+                    "settleBefore": "2026-09-09T00:00:00Z",
+                    "meta": { "values": {} }
+                },
+                "transferLegId": "leg-1",
+                "transferLeg": {
+                    "sender": "alice::1220ab",
+                    "receiver": "bob::1220cd",
+                    "amount": "1.0",
+                    "instrumentId": { "admin": "admin::1220ef", "id": "CBTC" },
+                    "meta": { "values": {} }
+                }
+            },
+            "requestedAt": "2026-09-01T00:00:00Z",
+            "inputHoldingCids": ["00abc"],
+            "extraArgs": empty_extra_args()
+        });
+
+        let parsed: ChoiceArgumentsVariations = serde_json::from_value(payload).unwrap();
+        assert!(
+            matches!(parsed, ChoiceArgumentsVariations::AllocationFactory(_)),
+            "an allocation payload must not be swallowed by Accept"
+        );
+    }
+
+    #[test]
     fn v1_instruction_payload_still_deserializes_as_accept() {
         let payload = json!({ "extraArgs": empty_extra_args() });
 

@@ -61,11 +61,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Notes
 
 - **The one input a V2 entry point rejects that V1 had no way to express** is
-  an `Account` with `owner: None` — the registry-managed account shape, used
-  for an instrument admin's mint source. Every V2 entry point holding an
-  account guards it through one `require_owner` helper and fails with an error
-  naming the offending field. V1 carried bare party strings, which cannot be
-  absent, so no V1 caller can reach this error.
+  an `Account` with `owner: None`. `HoldingV2.daml` reserves that shape for
+  accounts the instrument admin manages, such as a mint source or a burn
+  target. This library is not the instrument admin, so it neither operates
+  such an account nor targets one. Every V2 entry point holding an account
+  guards every account it holds, through one `require_owner` helper, and
+  fails with an error naming the offending field. That includes both sides of
+  a transfer: `transfer::v2::submit` rejects a receiver with `owner: None` as
+  well as a sender. V1 carried bare party strings, which cannot be absent, so
+  no V1 caller can reach this error.
 - The choice names are version-neutral: V2 keeps `TransferFactory_Transfer`,
   `TransferInstruction_Accept`, `TransferInstruction_Reject` and
   `TransferInstruction_Withdraw`. No V2 choice-name constant was added.
