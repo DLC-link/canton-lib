@@ -129,22 +129,19 @@ pub async fn submit(params: Params) -> Result<(), String> {
     };
 
     // Submit the withdrawal transaction
-    let submission_request = common::submission::Submission {
-        act_as: vec![params.sender_party],
-        read_as: None,
-        command_id: uuid::Uuid::new_v4().to_string(),
-        disclosed_contracts: withdraw_context.disclosed_contracts,
-        commands: vec![common::submission::Command::ExerciseCommand(
+    let submission_request = crate::utils::build_submission(
+        vec![params.sender_party],
+        withdraw_context.disclosed_contracts,
+        vec![common::submission::Command::ExerciseCommand(
             exercise_command,
         )],
-        ..Default::default()
-    };
+    );
 
-    ledger::submit::wait_for_transaction(ledger::submit::Params {
-        ledger_host: params.ledger_host,
-        access_token: params.access_token,
-        request: submission_request,
-    })
+    crate::utils::submit_and_wait(
+        &params.ledger_host,
+        &params.access_token,
+        submission_request,
+    )
     .await?;
 
     Ok(())
@@ -188,21 +185,14 @@ async fn submit_withdraws(
         .iter()
         .map(|cid| build_withdraw_command(cid, context))
         .collect();
-    let submission_request = common::submission::Submission {
-        act_as: vec![sender_party.to_string()],
-        read_as: None,
-        command_id: uuid::Uuid::new_v4().to_string(),
-        disclosed_contracts: context.disclosed_contracts.clone(),
+    let submission_request = crate::utils::build_submission(
+        vec![sender_party.to_string()],
+        context.disclosed_contracts.clone(),
         commands,
-        ..Default::default()
-    };
-    ledger::submit::wait_for_transaction(ledger::submit::Params {
-        ledger_host: ledger_host.to_string(),
-        access_token: access_token.to_string(),
-        request: submission_request,
-    })
-    .await
-    .map(|_| ())
+    );
+    crate::utils::submit_and_wait(ledger_host, access_token, submission_request)
+        .await
+        .map(|_| ())
 }
 
 /// Record one offer's outcome into the running result tally.
@@ -404,7 +394,7 @@ pub async fn withdraw_all(params: WithdrawAllParams) -> Result<WithdrawAllResult
     // Build and submit commands in batches of 5
     const BATCH_SIZE: usize = 5;
     let total_transfers = pending_transfers.len();
-    let num_batches = (total_transfers + BATCH_SIZE - 1) / BATCH_SIZE;
+    let num_batches = total_transfers.div_ceil(BATCH_SIZE);
 
     log::debug!(
         "\nSubmitting {} withdrawals in {} batch(es) of up to {}...",
@@ -454,16 +444,16 @@ pub async fn withdraw_all(params: WithdrawAllParams) -> Result<WithdrawAllResult
             let mut amount = None;
             let mut receiver = None;
 
-            if let Some(create_arg) = &transfer.created_event.create_argument {
-                if let Some(transfer_data) = create_arg.get("transfer") {
-                    if let Some(amt) = transfer_data.get("amount") {
-                        amount = amt.as_str().map(|s| s.to_string());
-                        log::debug!("     Amount: {}", amt);
-                    }
-                    if let Some(rcvr) = transfer_data.get("receiver") {
-                        receiver = rcvr.as_str().map(|s| s.to_string());
-                        log::debug!("     To: {}", rcvr.as_str().unwrap_or("unknown"));
-                    }
+            if let Some(create_arg) = &transfer.created_event.create_argument
+                && let Some(transfer_data) = create_arg.get("transfer")
+            {
+                if let Some(amt) = transfer_data.get("amount") {
+                    amount = amt.as_str().map(|s| s.to_string());
+                    log::debug!("     Amount: {}", amt);
+                }
+                if let Some(rcvr) = transfer_data.get("receiver") {
+                    receiver = rcvr.as_str().map(|s| s.to_string());
+                    log::debug!("     To: {}", rcvr.as_str().unwrap_or("unknown"));
                 }
             }
 
@@ -505,20 +495,17 @@ pub async fn withdraw_all(params: WithdrawAllParams) -> Result<WithdrawAllResult
         // Submit this batch
         log::debug!("  Submitting batch {}/{}...", batch_num, num_batches);
 
-        let submission_request = common::submission::Submission {
-            act_as: vec![params.sender_party.clone()],
-            read_as: None,
-            command_id: uuid::Uuid::new_v4().to_string(),
-            disclosed_contracts: withdraw_context.disclosed_contracts.clone(),
-            commands: batch_commands,
-            ..Default::default()
-        };
+        let submission_request = crate::utils::build_submission(
+            vec![params.sender_party.clone()],
+            withdraw_context.disclosed_contracts.clone(),
+            batch_commands,
+        );
 
-        match ledger::submit::wait_for_transaction(ledger::submit::Params {
-            ledger_host: params.ledger_host.clone(),
-            access_token: auth.access_token.clone(),
-            request: submission_request,
-        })
+        match crate::utils::submit_and_wait(
+            &params.ledger_host,
+            &auth.access_token,
+            submission_request,
+        )
         .await
         {
             Ok(_) => {
@@ -584,4 +571,676 @@ pub async fn withdraw_all(params: WithdrawAllParams) -> Result<WithdrawAllResult
         failed_count,
         results,
     })
+}
+
+/// Token Standard V2 forms of the withdraw entry points.
+///
+/// These call the registry's `withdraw` choice-context route. V1 calls the
+/// `accept` route and exercises withdraw against it; that mismatch is filed
+/// as a follow-up rather than fixed here.
+pub mod v2 {
+    use crate::accept::v2::{fetch_context, instruction_command};
+    use crate::utils::{build_submission, submit_and_wait};
+
+    /// The ledger choice this module exercises. `pub(crate)` because the test
+    /// lives in a sibling module and reads it back instead of restating it.
+    pub(crate) const CHOICE: &str = "TransferInstruction_Withdraw";
+    /// The registry choice-context route this module fetches.
+    pub(crate) const CONTEXT_CHOICE: registry::accept_context::v2::InstructionChoice =
+        registry::accept_context::v2::InstructionChoice::Withdraw;
+
+    const BATCH_SIZE: usize = 5;
+
+    pub struct Params {
+        pub transfer_instruction_id: String,
+        pub sender_party: String,
+        pub ledger_host: String,
+        pub access_token: String,
+        pub registry_url: String,
+        pub decentralized_party_id: String,
+    }
+
+    pub struct WithdrawBatchParams {
+        pub contract_ids: Vec<String>,
+        pub sender_party: String,
+        pub ledger_host: String,
+        pub access_token: String,
+        pub registry_url: String,
+        pub decentralized_party_id: String,
+    }
+
+    pub struct WithdrawAllParams {
+        pub sender_party: String,
+        pub instrument_id: common::transfer::InstrumentId,
+        pub ledger_host: String,
+        pub registry_url: String,
+        pub decentralized_party_id: String,
+        pub keycloak_client_id: String,
+        pub keycloak_username: String,
+        pub keycloak_password: String,
+        pub keycloak_url: String,
+    }
+
+    /// Withdraw the given contract ids as one atomic transaction.
+    async fn submit_withdraws(
+        contract_ids: &[String],
+        actors: &[String],
+        ledger_host: &str,
+        access_token: &str,
+        context: &registry::accept_context::Response,
+    ) -> Result<(), String> {
+        let commands = contract_ids
+            .iter()
+            .map(|cid| instruction_command(cid, CHOICE, actors.to_vec(), context))
+            .collect();
+        let submission = build_submission(
+            actors.to_vec(),
+            context.disclosed_contracts.clone(),
+            commands,
+        );
+        submit_and_wait(ledger_host, access_token, submission)
+            .await
+            .map(|_| ())
+    }
+
+    /// Withdraw one transfer instruction as the sending party.
+    pub async fn submit(params: Params) -> Result<(), String> {
+        let context = fetch_context(
+            &params.registry_url,
+            &params.decentralized_party_id,
+            &params.transfer_instruction_id,
+            CONTEXT_CHOICE,
+        )
+        .await?;
+
+        let actors = vec![params.sender_party];
+
+        submit_withdraws(
+            std::slice::from_ref(&params.transfer_instruction_id),
+            &actors,
+            &params.ledger_host,
+            &params.access_token,
+            &context,
+        )
+        .await
+    }
+
+    /// Withdraw a given set of transfer instructions, batched.
+    ///
+    /// A Canton transaction is atomic, so a batch of **more than one** offer
+    /// containing a non-withdrawable offer is retried per offer. The
+    /// withdrawable offers then still succeed and only the offenders fail.
+    /// A single-offer batch is recorded as it failed, without a second
+    /// submission — retrying it would just resubmit the same command.
+    pub async fn withdraw_batch(
+        params: WithdrawBatchParams,
+    ) -> Result<super::WithdrawAllResult, String> {
+        if params.contract_ids.is_empty() {
+            return Ok(super::WithdrawAllResult {
+                results: Vec::new(),
+                successful_count: 0,
+                failed_count: 0,
+            });
+        }
+
+        let context = fetch_context(
+            &params.registry_url,
+            &params.decentralized_party_id,
+            &params.contract_ids[0],
+            CONTEXT_CHOICE,
+        )
+        .await?;
+
+        let actors = vec![params.sender_party];
+        let mut results = Vec::new();
+        let mut successful_count = 0;
+        let mut failed_count = 0;
+
+        for batch in params.contract_ids.chunks(BATCH_SIZE) {
+            match submit_withdraws(
+                batch,
+                &actors,
+                &params.ledger_host,
+                &params.access_token,
+                &context,
+            )
+            .await
+            {
+                Ok(()) => {
+                    for cid in batch {
+                        super::record_withdraw(
+                            &mut results,
+                            &mut successful_count,
+                            &mut failed_count,
+                            cid,
+                            Ok(()),
+                        );
+                    }
+                }
+                Err(_) if batch.len() > 1 => {
+                    log::debug!("Batch withdraw failed; retrying per offer");
+                    for cid in batch {
+                        let outcome = submit_withdraws(
+                            std::slice::from_ref(cid),
+                            &actors,
+                            &params.ledger_host,
+                            &params.access_token,
+                            &context,
+                        )
+                        .await;
+                        super::record_withdraw(
+                            &mut results,
+                            &mut successful_count,
+                            &mut failed_count,
+                            cid,
+                            outcome,
+                        );
+                    }
+                }
+                // V1's third arm, at `cancel_offers.rs:319`. A one-offer batch
+                // has nothing to split, so it is recorded as it failed. Merging
+                // this into the arm above would resubmit the same command.
+                Err(e) => {
+                    super::record_withdraw(
+                        &mut results,
+                        &mut successful_count,
+                        &mut failed_count,
+                        &batch[0],
+                        Err(e),
+                    );
+                }
+            }
+        }
+
+        Ok(super::WithdrawAllResult {
+            results,
+            successful_count,
+            failed_count,
+        })
+    }
+
+    /// Withdraw every pending outgoing transfer of an instrument.
+    ///
+    /// Mirrors V1's [`super::withdraw_all`] rather than delegating to
+    /// [`withdraw_batch`]. Two behaviours depend on it: this function reads
+    /// each offer's amount and receiver onto its result, and a failed batch
+    /// fails every offer in that batch. `withdraw_batch` holds only contract
+    /// ids, so it can report neither, and it retries per offer.
+    pub async fn withdraw_all(
+        params: WithdrawAllParams,
+    ) -> Result<super::WithdrawAllResult, String> {
+        log::debug!("Authenticating with Keycloak...");
+        let auth = keycloak::login::password(keycloak::login::PasswordParams {
+            client_id: params.keycloak_client_id,
+            username: params.keycloak_username,
+            password: params.keycloak_password,
+            url: params.keycloak_url,
+        })
+        .await
+        .map_err(|e| format!("Authentication failed: {}", e))?;
+
+        log::debug!(
+            "Checking for pending transfers sent by party: {}",
+            params.sender_party
+        );
+
+        let pending_transfers = crate::utils::fetch_outgoing_transfers(
+            params.ledger_host.clone(),
+            params.sender_party.clone(),
+            auth.access_token.clone(),
+            params.instrument_id.clone(),
+        )
+        .await?;
+
+        if pending_transfers.is_empty() {
+            log::debug!("No pending outgoing transfers found");
+            return Ok(super::WithdrawAllResult {
+                results: Vec::new(),
+                successful_count: 0,
+                failed_count: 0,
+            });
+        }
+
+        log::debug!(
+            "Found {} pending outgoing transfer(s)",
+            pending_transfers.len()
+        );
+
+        // One context, shared across the run, as V1 does. V1 fetches the
+        // accept route here; this fetches the withdraw route.
+        let context = fetch_context(
+            &params.registry_url,
+            &params.decentralized_party_id,
+            &pending_transfers[0].created_event.contract_id,
+            CONTEXT_CHOICE,
+        )
+        .await?;
+
+        let actors = vec![params.sender_party.clone()];
+        let total_transfers = pending_transfers.len();
+        let num_batches = total_transfers.div_ceil(BATCH_SIZE);
+
+        let mut results = Vec::new();
+        let mut successful_count = 0;
+        let mut failed_count = 0;
+
+        for (batch_idx, batch_transfers) in pending_transfers.chunks(BATCH_SIZE).enumerate() {
+            let batch_num = batch_idx + 1;
+
+            let mut batch_commands = Vec::new();
+            let mut batch_results = Vec::new();
+
+            for transfer in batch_transfers {
+                let contract_id = &transfer.created_event.contract_id;
+
+                // `TransferOffer` stores a V1 transfer whichever factory
+                // version created it, so `receiver` is a bare party either way.
+                let mut amount = None;
+                let mut receiver = None;
+                if let Some(create_arg) = &transfer.created_event.create_argument
+                    && let Some(transfer_data) = create_arg.get("transfer")
+                {
+                    amount = transfer_data
+                        .get("amount")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
+                    receiver = transfer_data
+                        .get("receiver")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
+                }
+
+                batch_commands.push(instruction_command(
+                    contract_id,
+                    CHOICE,
+                    actors.clone(),
+                    &context,
+                ));
+
+                batch_results.push(super::WithdrawResult {
+                    success: false,
+                    contract_id: contract_id.clone(),
+                    amount,
+                    receiver,
+                    error: None,
+                });
+            }
+
+            log::debug!("  Submitting batch {}/{}...", batch_num, num_batches);
+
+            let submission = build_submission(
+                actors.clone(),
+                context.disclosed_contracts.clone(),
+                batch_commands,
+            );
+
+            match submit_and_wait(&params.ledger_host, &auth.access_token, submission).await {
+                Ok(_) => {
+                    log::debug!("  ✓ Batch {}/{} successful", batch_num, num_batches);
+                    for result in batch_results.iter_mut() {
+                        result.success = true;
+                        successful_count += 1;
+                    }
+                }
+                Err(e) => {
+                    log::debug!("  ✗ Batch {}/{} failed: {}", batch_num, num_batches, e);
+                    for result in batch_results.iter_mut() {
+                        result.error = Some(e.clone());
+                        failed_count += 1;
+                    }
+                }
+            }
+
+            results.extend(batch_results);
+        }
+
+        log::debug!(
+            "Summary: Withdrawn: {}, Failed: {}",
+            successful_count,
+            failed_count
+        );
+
+        Ok(super::WithdrawAllResult {
+            successful_count,
+            failed_count,
+            results,
+        })
+    }
+}
+
+#[cfg(test)]
+mod v2_tests {
+    use super::*;
+
+    fn context() -> registry::accept_context::Response {
+        serde_json::from_value(serde_json::json!({
+            "choiceContextData": { "values": {} },
+            "disclosedContracts": []
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn v2_withdraw_uses_the_withdraw_choice_and_route() {
+        let command = crate::accept::v2::instruction_command(
+            "00instruction",
+            v2::CHOICE,
+            vec!["alice::1220ab".to_string()],
+            &context(),
+        );
+        let json = serde_json::to_value(&command).unwrap();
+        assert_eq!(
+            json["ExerciseCommand"]["choice"],
+            serde_json::json!("TransferInstruction_Withdraw")
+        );
+
+        // V1 fetches the accept route here and exercises withdraw against it.
+        // The V2 path must not inherit that.
+        assert_eq!(
+            registry::accept_context::v2::context_url(
+                "https://r.example",
+                "admin::1220ab",
+                "00instruction",
+                v2::CONTEXT_CHOICE,
+            )
+            .rsplit('/')
+            .next(),
+            Some("withdraw")
+        );
+    }
+
+    // --- `v2::withdraw_batch` against a stubbed registry and ledger ---
+    //
+    // `withdraw_batch` takes contract ids directly, so it never queries the
+    // active-contract set and both of its boundaries are plain HTTP: the
+    // registry choice-context route and the ledger submit endpoint. Stubbing
+    // those two reaches all four of its branches.
+
+    use wiremock::matchers::{method, path, path_regex};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    const SUBMIT_PATH: &str = "/v2/commands/submit-and-wait-for-transaction";
+
+    /// A server answering the withdraw choice-context route and the ledger
+    /// submit endpoint. The first `submit_failures` submissions get a 500 and
+    /// every later one gets a 200, which is what separates a failed batch from
+    /// the per-offer retries that follow it.
+    async fn withdraw_stub(submit_failures: u64) -> MockServer {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path_regex(r".*/choice-contexts/withdraw$"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "choiceContextData": { "values": {} },
+                "disclosedContracts": []
+            })))
+            .mount(&server)
+            .await;
+
+        if submit_failures > 0 {
+            Mock::given(method("POST"))
+                .and(path(SUBMIT_PATH))
+                .respond_with(ResponseTemplate::new(500).set_body_string("rejected"))
+                .up_to_n_times(submit_failures)
+                .with_priority(1)
+                .mount(&server)
+                .await;
+        }
+
+        Mock::given(method("POST"))
+            .and(path(SUBMIT_PATH))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({})))
+            .with_priority(2)
+            .mount(&server)
+            .await;
+
+        server
+    }
+
+    /// A server whose submissions answer `statuses` in order, then 200.
+    ///
+    /// A single failure count cannot express a mixed retry, where one offer
+    /// succeeds and another fails, so this drives the sequence directly.
+    async fn withdraw_stub_sequence(statuses: &[u16]) -> MockServer {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path_regex(r".*/choice-contexts/withdraw$"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "choiceContextData": { "values": {} },
+                "disclosedContracts": []
+            })))
+            .mount(&server)
+            .await;
+
+        for (index, status) in statuses.iter().enumerate() {
+            Mock::given(method("POST"))
+                .and(path(SUBMIT_PATH))
+                .respond_with(ResponseTemplate::new(*status).set_body_json(serde_json::json!({})))
+                .up_to_n_times(1)
+                .with_priority(u8::try_from(index + 1).expect("few statuses"))
+                .mount(&server)
+                .await;
+        }
+
+        Mock::given(method("POST"))
+            .and(path(SUBMIT_PATH))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({})))
+            .with_priority(u8::MAX)
+            .mount(&server)
+            .await;
+
+        server
+    }
+
+    /// How many commands each submission carried, in order.
+    ///
+    /// This is what separates a per-offer retry from a whole-batch retry: both
+    /// send three submissions for a failed pair, but only the buggy one sends
+    /// two commands twice.
+    async fn submitted_command_counts(server: &MockServer) -> Vec<usize> {
+        server
+            .received_requests()
+            .await
+            .expect("wiremock records requests by default")
+            .iter()
+            .filter(|r| r.url.path() == SUBMIT_PATH)
+            .map(|r| {
+                let body: serde_json::Value =
+                    serde_json::from_slice(&r.body).expect("the submission must be JSON");
+                body["commands"]["commands"]
+                    .as_array()
+                    .map(|c| c.len())
+                    .unwrap_or_default()
+            })
+            .collect()
+    }
+
+    fn batch_params(server: &MockServer, contract_ids: Vec<String>) -> v2::WithdrawBatchParams {
+        v2::WithdrawBatchParams {
+            contract_ids,
+            sender_party: "alice::1220ab".to_string(),
+            ledger_host: server.uri(),
+            access_token: "test-access-token".to_string(),
+            registry_url: server.uri(),
+            decentralized_party_id: "admin::1220ef".to_string(),
+        }
+    }
+
+    /// How many submissions the run sent to the ledger.
+    async fn submit_count(server: &MockServer) -> usize {
+        server
+            .received_requests()
+            .await
+            .expect("wiremock records requests by default")
+            .iter()
+            .filter(|r| r.url.path() == SUBMIT_PATH)
+            .count()
+    }
+
+    #[tokio::test]
+    async fn v2_withdraw_batch_returns_before_calling_anything_on_an_empty_list() {
+        let server = withdraw_stub(0).await;
+
+        let result = v2::withdraw_batch(batch_params(&server, Vec::new()))
+            .await
+            .expect("an empty list is not an error");
+
+        assert_eq!(result.successful_count, 0);
+        assert_eq!(result.failed_count, 0);
+        assert!(result.results.is_empty());
+        assert_eq!(
+            server
+                .received_requests()
+                .await
+                .expect("wiremock records requests by default")
+                .len(),
+            0,
+            "an empty list must not even fetch the choice context"
+        );
+    }
+
+    #[tokio::test]
+    async fn v2_withdraw_batch_records_every_offer_of_a_batch_that_succeeds() {
+        let server = withdraw_stub(0).await;
+        let ids = vec!["00one".to_string(), "00two".to_string()];
+
+        let result = v2::withdraw_batch(batch_params(&server, ids.clone()))
+            .await
+            .expect("the batch succeeds");
+
+        assert_eq!(result.successful_count, 2);
+        assert_eq!(result.failed_count, 0);
+        let recorded: Vec<&String> = result.results.iter().map(|r| &r.contract_id).collect();
+        assert_eq!(recorded, ids.iter().collect::<Vec<&String>>());
+        assert!(
+            result
+                .results
+                .iter()
+                .all(|r| r.success && r.error.is_none())
+        );
+        assert_eq!(
+            submit_count(&server).await,
+            1,
+            "a batch that succeeds is one atomic submission"
+        );
+    }
+
+    #[tokio::test]
+    async fn v2_withdraw_batch_retries_a_failed_multi_offer_batch_one_offer_at_a_time() {
+        // Only the first submission fails, so the batch fails and both
+        // per-offer retries then succeed.
+        let server = withdraw_stub(1).await;
+        let ids = vec!["00one".to_string(), "00two".to_string()];
+
+        let result = v2::withdraw_batch(batch_params(&server, ids))
+            .await
+            .expect("the retries succeed");
+
+        assert_eq!(result.successful_count, 2);
+        assert_eq!(result.failed_count, 0);
+        assert_eq!(
+            submitted_command_counts(&server).await,
+            vec![2, 1, 1],
+            "the failed batch carries both offers, then each retry carries one"
+        );
+    }
+
+    #[tokio::test]
+    async fn v2_withdraw_batch_chunks_at_the_batch_size() {
+        let server = withdraw_stub(0).await;
+        let ids: Vec<String> = (0..6).map(|i| format!("00offer{i}")).collect();
+
+        let result = v2::withdraw_batch(batch_params(&server, ids))
+            .await
+            .expect("every batch succeeds");
+
+        assert_eq!(result.successful_count, 6);
+        assert_eq!(result.failed_count, 0);
+        assert_eq!(
+            submitted_command_counts(&server).await,
+            vec![5, 1],
+            "six offers must split into a full batch of five and a remainder"
+        );
+    }
+
+    #[tokio::test]
+    async fn v2_withdraw_batch_reports_a_mixed_retry_offer_by_offer() {
+        // The batch fails, then the first offer succeeds and the second does
+        // not. A run that counted per batch rather than per offer would report
+        // both the same way.
+        let server = withdraw_stub_sequence(&[500, 200, 500]).await;
+        let ids = vec!["00one".to_string(), "00two".to_string()];
+
+        let result = v2::withdraw_batch(batch_params(&server, ids))
+            .await
+            .expect("a partly failed batch is reported, not returned as an error");
+
+        assert_eq!(result.successful_count, 1);
+        assert_eq!(result.failed_count, 1);
+        assert!(result.results[0].success, "the first offer succeeded");
+        assert!(!result.results[1].success, "the second offer failed");
+        assert!(
+            result.results[1].error.is_some(),
+            "the failed offer must carry its reason"
+        );
+    }
+
+    #[tokio::test]
+    async fn v2_withdraw_batch_reports_a_failed_single_offer_without_resubmitting_it() {
+        // Every submission fails, so the single-offer branch has nothing to
+        // split and must record the failure as it stands.
+        let server = withdraw_stub(u64::MAX).await;
+
+        let result = v2::withdraw_batch(batch_params(&server, vec!["00one".to_string()]))
+            .await
+            .expect("a failed offer is reported, not returned as an error");
+
+        assert_eq!(result.successful_count, 0);
+        assert_eq!(result.failed_count, 1);
+        assert_eq!(result.results.len(), 1);
+        assert!(!result.results[0].success);
+        assert!(
+            result.results[0].error.is_some(),
+            "a failed withdraw must carry the reason"
+        );
+        assert_eq!(
+            submit_count(&server).await,
+            1,
+            "a one-offer batch has nothing to split, so it must not be resubmitted"
+        );
+    }
+
+    #[tokio::test]
+    async fn v2_submit_sends_the_withdraw_choice_to_the_withdraw_route() {
+        let server = crate::test_utils::stub::instruction_server().await;
+
+        v2::submit(v2::Params {
+            transfer_instruction_id: "00instruction".to_string(),
+            sender_party: "alice::1220ab".to_string(),
+            ledger_host: server.uri(),
+            access_token: "test-access-token".to_string(),
+            registry_url: server.uri(),
+            decentralized_party_id: "admin::1220ef".to_string(),
+        })
+        .await
+        .expect("the stub answers both boundaries");
+
+        // V1 fetches the accept context here and exercises withdraw against
+        // it. This asserts the V2 path does not.
+        let sent = crate::test_utils::stub::submitted(&server).await;
+        assert_eq!(sent.choice, "TransferInstruction_Withdraw");
+        assert!(
+            sent.context_path.ends_with("/choice-contexts/withdraw"),
+            "withdraw must fetch its own context route, got {}",
+            sent.context_path
+        );
+        assert!(
+            sent.context_path.contains("/transfer-instruction/v2/"),
+            "a V2 operation must fetch the V2 route, got {}",
+            sent.context_path
+        );
+        assert_eq!(sent.actors, vec!["alice::1220ab".to_string()]);
+        assert_eq!(sent.act_as, vec!["alice::1220ab".to_string()]);
+    }
 }

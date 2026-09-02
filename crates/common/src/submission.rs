@@ -21,13 +21,22 @@ pub struct ExerciseCommandData {
 // that construct these variants (cbtc-lib has several). Suppress the lint here and
 // revisit when those callers can be updated in lock-step.
 //
-// Variant order is load-bearing for untagged deserialization: `AllocationFactory`
-// must precede `Accept`, which only requires `extraArgs` and ignores unknown
-// fields, so an allocation payload would otherwise match `Accept` first.
+// Variant order is load-bearing for untagged deserialization. Serde tries each
+// variant in declaration order and takes the first that fits; unknown fields do
+// not stop a match. So each variant must precede every variant it could be
+// mistaken for:
+//   - `AllocationFactory` precedes `Accept`, which only requires `extraArgs`.
+//   - `TransferFactoryV2` precedes `AcceptV2`, because a V2 factory payload also
+//     satisfies the V2 instruction shape: it carries `actors` and `extraArgs`.
+//   - Both V2 variants precede `Accept`, for the same reason as `AllocationFactory`.
+// The two V1 factory variants are safe in front of the V2 ones, because both
+// require `expectedAdmin` and no V2 payload carries it.
 #[allow(clippy::large_enum_variant)]
 pub enum ChoiceArgumentsVariations {
     TransferFactory(transfer_factory::ChoiceArguments),
     AllocationFactory(allocation_factory::ChoiceArguments),
+    TransferFactoryV2(transfer_factory::v2::ChoiceArguments),
+    AcceptV2(accept::v2::ChoiceArguments),
     Accept(accept::ChoiceArguments),
     Generic(serde_json::Value),
 }
@@ -102,5 +111,130 @@ pub enum DeduplicationPeriod {
 impl Default for DeduplicationPeriod {
     fn default() -> Self {
         Self::DeduplicationPeriodOneOf(Default::default())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn empty_extra_args() -> serde_json::Value {
+        json!({ "context": { "values": {} }, "meta": { "values": {} } })
+    }
+
+    fn v1_transfer() -> serde_json::Value {
+        json!({
+            "sender": "alice::1220ab",
+            "receiver": "bob::1220cd",
+            "amount": "1.0",
+            "instrumentId": { "admin": "admin::1220ef", "id": "CBTC" },
+            "requestedAt": "2026-09-01T00:00:00Z",
+            "executeBefore": "2026-09-08T00:00:00Z",
+            "inputHoldingCids": ["00abc"],
+            "meta": { "values": {} }
+        })
+    }
+
+    fn v2_transfer() -> serde_json::Value {
+        json!({
+            "sender": { "owner": "alice::1220ab", "provider": null, "id": "" },
+            "receiver": { "owner": "bob::1220cd", "provider": null, "id": "" },
+            "amount": "1.0",
+            "instrumentId": { "admin": "admin::1220ef", "id": "CBTC" },
+            "requestedAt": "2026-09-01T00:00:00Z",
+            "executeBefore": "2026-09-08T00:00:00Z",
+            "inputHoldingCids": ["00abc"],
+            "meta": { "values": {} }
+        })
+    }
+
+    #[test]
+    fn v2_factory_payload_deserializes_as_transfer_factory_v2() {
+        let payload = json!({
+            "transfer": v2_transfer(),
+            "actors": ["alice::1220ab"],
+            "extraArgs": empty_extra_args()
+        });
+
+        let parsed: ChoiceArgumentsVariations = serde_json::from_value(payload).unwrap();
+        assert!(
+            matches!(parsed, ChoiceArgumentsVariations::TransferFactoryV2(_)),
+            "a V2 factory payload must not be swallowed by AcceptV2 or Accept"
+        );
+    }
+
+    #[test]
+    fn v2_instruction_payload_deserializes_as_accept_v2() {
+        let payload = json!({
+            "actors": ["bob::1220cd"],
+            "extraArgs": empty_extra_args()
+        });
+
+        let parsed: ChoiceArgumentsVariations = serde_json::from_value(payload).unwrap();
+        assert!(
+            matches!(parsed, ChoiceArgumentsVariations::AcceptV2(_)),
+            "a V2 instruction payload must not be swallowed by Accept"
+        );
+    }
+
+    #[test]
+    fn v1_factory_payload_still_deserializes_as_transfer_factory() {
+        let payload = json!({
+            "expectedAdmin": "admin::1220ef",
+            "transfer": v1_transfer(),
+            "extraArgs": empty_extra_args()
+        });
+
+        let parsed: ChoiceArgumentsVariations = serde_json::from_value(payload).unwrap();
+        assert!(matches!(
+            parsed,
+            ChoiceArgumentsVariations::TransferFactory(_)
+        ));
+    }
+
+    #[test]
+    fn an_allocation_payload_does_not_deserialize_as_accept() {
+        // The declaration comment's first claim. `Accept` requires only
+        // `extraArgs`, which an allocation payload also carries, so the order
+        // of these two is what keeps them apart.
+        let payload = json!({
+            "expectedAdmin": "admin::1220ef",
+            "allocation": {
+                "settlement": {
+                    "executor": "exec::1220ab",
+                    "settlementRef": { "id": "ref-1", "cid": null },
+                    "requestedAt": "2026-09-01T00:00:00Z",
+                    "allocateBefore": "2026-09-08T00:00:00Z",
+                    "settleBefore": "2026-09-09T00:00:00Z",
+                    "meta": { "values": {} }
+                },
+                "transferLegId": "leg-1",
+                "transferLeg": {
+                    "sender": "alice::1220ab",
+                    "receiver": "bob::1220cd",
+                    "amount": "1.0",
+                    "instrumentId": { "admin": "admin::1220ef", "id": "CBTC" },
+                    "meta": { "values": {} }
+                }
+            },
+            "requestedAt": "2026-09-01T00:00:00Z",
+            "inputHoldingCids": ["00abc"],
+            "extraArgs": empty_extra_args()
+        });
+
+        let parsed: ChoiceArgumentsVariations = serde_json::from_value(payload).unwrap();
+        assert!(
+            matches!(parsed, ChoiceArgumentsVariations::AllocationFactory(_)),
+            "an allocation payload must not be swallowed by Accept"
+        );
+    }
+
+    #[test]
+    fn v1_instruction_payload_still_deserializes_as_accept() {
+        let payload = json!({ "extraArgs": empty_extra_args() });
+
+        let parsed: ChoiceArgumentsVariations = serde_json::from_value(payload).unwrap();
+        assert!(matches!(parsed, ChoiceArgumentsVariations::Accept(_)));
     }
 }
