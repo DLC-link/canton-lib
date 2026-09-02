@@ -1111,4 +1111,32 @@ mod v2_tests {
             "a one-offer batch has nothing to split, so it must not be resubmitted"
         );
     }
+
+    #[tokio::test]
+    async fn v2_submit_sends_the_withdraw_choice_to_the_withdraw_route() {
+        let server = crate::test_utils::stub::instruction_server().await;
+
+        v2::submit(v2::Params {
+            transfer_instruction_id: "00instruction".to_string(),
+            sender_party: "alice::1220ab".to_string(),
+            ledger_host: server.uri(),
+            access_token: "test-access-token".to_string(),
+            registry_url: server.uri(),
+            decentralized_party_id: "admin::1220ef".to_string(),
+        })
+        .await
+        .expect("the stub answers both boundaries");
+
+        // V1 fetches the accept context here and exercises withdraw against
+        // it. This asserts the V2 path does not.
+        let sent = crate::test_utils::stub::submitted(&server).await;
+        assert_eq!(sent.choice, "TransferInstruction_Withdraw");
+        assert!(
+            sent.context_path.ends_with("/choice-contexts/withdraw"),
+            "withdraw must fetch its own context route, got {}",
+            sent.context_path
+        );
+        assert_eq!(sent.actors, vec!["alice::1220ab".to_string()]);
+        assert_eq!(sent.act_as, vec!["alice::1220ab".to_string()]);
+    }
 }

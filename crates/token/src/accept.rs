@@ -736,4 +736,30 @@ mod v2_tests {
         assert_eq!(json["actAs"], serde_json::json!(["bob::1220cd"]));
         assert_eq!(json["commands"].as_array().unwrap().len(), 1);
     }
+
+    #[tokio::test]
+    async fn v2_submit_sends_the_accept_choice_to_the_accept_route() {
+        let server = crate::test_utils::stub::instruction_server().await;
+
+        v2::submit(v2::Params {
+            transfer_instruction_id: "00instruction".to_string(),
+            receiver_party: "bob::1220cd".to_string(),
+            ledger_host: server.uri(),
+            access_token: "test-access-token".to_string(),
+            registry_url: server.uri(),
+            decentralized_party_id: "admin::1220ef".to_string(),
+        })
+        .await
+        .expect("the stub answers both boundaries");
+
+        let sent = crate::test_utils::stub::submitted(&server).await;
+        assert_eq!(sent.choice, "TransferInstruction_Accept");
+        assert!(
+            sent.context_path.ends_with("/choice-contexts/accept"),
+            "accept must fetch its own context route, got {}",
+            sent.context_path
+        );
+        assert_eq!(sent.actors, vec!["bob::1220cd".to_string()]);
+        assert_eq!(sent.act_as, vec!["bob::1220cd".to_string()]);
+    }
 }

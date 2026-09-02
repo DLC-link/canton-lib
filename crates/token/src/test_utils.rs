@@ -224,3 +224,99 @@ pub(crate) async fn incoming_with_reference(
 pub(crate) async fn balance(client: &mut TokenClient) -> DamlDecimal {
     client.balance().await.expect("balance failed")
 }
+
+/// Stubs for the crate's unit tests, as against the live tests above.
+///
+/// An instruction operation crosses two HTTP boundaries and queries no
+/// active-contract set: it fetches a choice context from the registry, then
+/// submits to the ledger. Serving both lets a unit test read back the whole
+/// submission, including the choice name and the acting parties.
+#[cfg(test)]
+pub(crate) mod stub {
+    use wiremock::matchers::{method, path, path_regex};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    pub(crate) const SUBMIT_PATH: &str = "/v2/commands/submit-and-wait-for-transaction";
+
+    /// What the run actually sent, read back off the stub.
+    pub(crate) struct Submitted {
+        pub(crate) choice: String,
+        pub(crate) actors: Vec<String>,
+        pub(crate) act_as: Vec<String>,
+        pub(crate) context_path: String,
+    }
+
+    /// A server answering every transfer-instruction choice-context route and
+    /// the ledger submit endpoint.
+    pub(crate) async fn instruction_server() -> MockServer {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path_regex(r".*/choice-contexts/[a-z]+$"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "choiceContextData": { "values": {} },
+                "disclosedContracts": []
+            })))
+            .mount(&server)
+            .await;
+
+        Mock::given(method("POST"))
+            .and(path(SUBMIT_PATH))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({})))
+            .mount(&server)
+            .await;
+
+        server
+    }
+
+    /// Read back the one command the run submitted, and the choice-context
+    /// route it fetched to build it.
+    pub(crate) async fn submitted(server: &MockServer) -> Submitted {
+        let requests = server
+            .received_requests()
+            .await
+            .expect("wiremock records requests by default");
+
+        let context_path = requests
+            .iter()
+            .find(|r| r.url.path().contains("/choice-contexts/"))
+            .expect("the operation must fetch a choice context")
+            .url
+            .path()
+            .to_string();
+
+        let submit = requests
+            .iter()
+            .find(|r| r.url.path() == SUBMIT_PATH)
+            .expect("the operation must submit to the ledger");
+        let body: serde_json::Value =
+            serde_json::from_slice(&submit.body).expect("the submission must be JSON");
+
+        // `wait_for_transaction` wraps the whole `Submission` in an outer
+        // `commands` field, so the command list sits two levels down.
+        let submission = &body["commands"];
+        let command = &submission["commands"][0]["ExerciseCommand"];
+
+        let strings = |value: &serde_json::Value| -> Vec<String> {
+            value
+                .as_array()
+                .map(|items| {
+                    items
+                        .iter()
+                        .map(|i| i.as_str().unwrap_or_default().to_string())
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
+
+        Submitted {
+            choice: command["choice"]
+                .as_str()
+                .expect("a command must name its choice")
+                .to_string(),
+            actors: strings(&command["choiceArgument"]["actors"]),
+            act_as: strings(&submission["actAs"]),
+            context_path,
+        }
+    }
+}
