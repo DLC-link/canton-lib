@@ -12,8 +12,17 @@
 //! `LEDGER_HOST`, `KEYCLOAK_CLIENT_ID`, `KEYCLOAK_USERNAME`,
 //! `KEYCLOAK_PASSWORD`, `KEYCLOAK_URL` (full token endpoint URL).
 //!
-//! The registry URL is pinned to devnet. Both parties share the Keycloak
-//! credentials and the participant.
+//! Optional, and needed whenever the two parties authenticate separately:
+//! `KEYCLOAK_CLIENT_ID_2`, `KEYCLOAK_USERNAME_2`, `KEYCLOAK_PASSWORD_2`.
+//! A participant grants a token access to its own party only, so on a
+//! deployment where the parties have separate Keycloak users, reusing
+//! party 1's token for party 2 fails every party-2 read with gRPC
+//! `PERMISSION_DENIED`. Each variable falls back to its party-1 twin, so
+//! an environment where the two really do share an account needs none of
+//! them. The token endpoint is shared either way.
+//!
+//! The registry URL is pinned to devnet, and both parties are on the same
+//! participant.
 //!
 //! Every test that creates transfer offers tags them with a fresh
 //! `test_uuid` reference, so ACS checks only see contracts from the
@@ -52,6 +61,9 @@ pub(crate) struct IntegrationTestState {
     pub(crate) ledger_host: String,
     pub(crate) registry_url: String,
     pub(crate) keycloak: KeycloakConfig,
+    /// Party 2's credentials. Equal to [`Self::keycloak`] unless the
+    /// environment supplies the `_2` variables.
+    pub(crate) keycloak_2: KeycloakConfig,
 }
 
 impl IntegrationTestState {
@@ -59,6 +71,23 @@ impl IntegrationTestState {
         dotenvy::dotenv().ok();
         let var = |name: &str| {
             env::var(name).unwrap_or_else(|_| panic!("{name} must be set for integration tests"))
+        };
+        let url = var("KEYCLOAK_URL");
+        let keycloak = KeycloakConfig {
+            client_id: var("KEYCLOAK_CLIENT_ID"),
+            username: var("KEYCLOAK_USERNAME"),
+            password: var("KEYCLOAK_PASSWORD"),
+            url: url.clone(),
+        };
+        // Fall back to party 1's value per field, so an environment where
+        // both parties share one Keycloak account needs no `_2` variables.
+        let or_party_1 =
+            |name: &str, fallback: &str| env::var(name).unwrap_or_else(|_| fallback.to_string());
+        let keycloak_2 = KeycloakConfig {
+            client_id: or_party_1("KEYCLOAK_CLIENT_ID_2", &keycloak.client_id),
+            username: or_party_1("KEYCLOAK_USERNAME_2", &keycloak.username),
+            password: or_party_1("KEYCLOAK_PASSWORD_2", &keycloak.password),
+            url,
         };
         Self {
             party_1: var("PARTY_ID_1"),
@@ -69,12 +98,22 @@ impl IntegrationTestState {
             },
             ledger_host: var("LEDGER_HOST"),
             registry_url: registry::consts::DEVNET_REGISTRY_URL.to_string(),
-            keycloak: KeycloakConfig {
-                client_id: var("KEYCLOAK_CLIENT_ID"),
-                username: var("KEYCLOAK_USERNAME"),
-                password: var("KEYCLOAK_PASSWORD"),
-                url: var("KEYCLOAK_URL"),
-            },
+            keycloak,
+            keycloak_2,
+        }
+    }
+
+    /// The credentials that can act as `party`.
+    ///
+    /// A participant authorises a token for one party, so building party
+    /// 2's client with party 1's credentials makes every party-2 read fail
+    /// with `PERMISSION_DENIED` rather than with anything that names the
+    /// real cause.
+    pub(crate) fn keycloak_for(&self, party: &str) -> &KeycloakConfig {
+        if party == self.party_2 {
+            &self.keycloak_2
+        } else {
+            &self.keycloak
         }
     }
 
@@ -108,7 +147,7 @@ impl IntegrationTestState {
             registry_url: self.registry_url.clone(),
             instrument: self.instrument.clone(),
             party: party.to_string(),
-            keycloak: self.keycloak.clone(),
+            keycloak: self.keycloak_for(party).clone(),
             version,
         })
         .await
