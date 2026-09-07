@@ -338,6 +338,14 @@ impl TokenClient {
     }
 
     /// Pending incoming transfer offers of this token (party is receiver).
+    ///
+    /// Version-neutral on purpose, and one of two methods on this type that
+    /// do not match on `self.config.version`. The read filters the V1
+    /// `TransferOffer` template and compares `transfer.receiver` as a bare
+    /// party, and the registry writes a bare party there under both versions.
+    /// A V2 registry that wrote an account object instead would drop every
+    /// offer from this list; `utils::party_field` logs a warning in that case
+    /// rather than returning an empty list silently.
     pub async fn incoming_offers(
         &mut self,
     ) -> Result<Vec<ledger::models::JsActiveContract>, String> {
@@ -352,6 +360,9 @@ impl TokenClient {
     }
 
     /// Pending outgoing transfer offers of this token (party is sender).
+    ///
+    /// Version-neutral for the same reason as [`Self::incoming_offers`], and
+    /// it compares `transfer.sender` rather than `transfer.receiver`.
     pub async fn outgoing_offers(
         &mut self,
     ) -> Result<Vec<ledger::models::JsActiveContract>, String> {
@@ -586,9 +597,10 @@ mod dispatch_tests {
     /// `get_fresh_token` always takes the refresh path, and `refresh` posts to
     /// the same URL as `password` (`keycloak/src/login.rs:226`).
     ///
-    /// The ledger submission is left unmocked and therefore fails. That is
-    /// deliberate: these tests assert what reached the registry, not what the
-    /// ledger did with it.
+    /// The ledger submit endpoint answers an empty JSON body. Every V2 entry
+    /// point returns `Ok(())` without reading the response, so that is enough
+    /// to let a test read the submitted command back through
+    /// [`crate::test_utils::stub::submitted`].
     async fn stub() -> MockServer {
         let server = MockServer::start().await;
 
@@ -607,6 +619,12 @@ mod dispatch_tests {
         Mock::given(method("POST"))
             .and(path_regex(r".*/choice-contexts/[a-z]+$"))
             .respond_with(ResponseTemplate::new(200).set_body_json(choice_context()))
+            .mount(&server)
+            .await;
+
+        Mock::given(method("POST"))
+            .and(path(crate::test_utils::stub::SUBMIT_PATH))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({})))
             .mount(&server)
             .await;
 
@@ -772,6 +790,18 @@ mod dispatch_tests {
             args["transfer"]["receiver"],
             serde_json::json!({ "owner": "bob::1220cd", "provider": null, "id": "" })
         );
+
+        // The registry body above is only half the call. Read the ledger
+        // command back too, so the factory path gets the same cover the
+        // accept, reject and withdraw paths already have.
+        let submitted = crate::test_utils::stub::submitted(&server).await;
+        assert_eq!(
+            submitted.template_id,
+            common::consts::TEMPLATE_TRANSFER_FACTORY_V2,
+            "the command must exercise the V2 factory interface"
+        );
+        assert_eq!(submitted.actors, vec![PARTY.to_string()]);
+        assert_eq!(submitted.act_as, vec![PARTY.to_string()]);
     }
 
     #[tokio::test]
@@ -805,6 +835,14 @@ mod dispatch_tests {
             transfer["sender"], transfer["receiver"],
             "the registry detects a merge-split by comparing whole accounts"
         );
+
+        let submitted = crate::test_utils::stub::submitted(&server).await;
+        assert_eq!(
+            submitted.template_id,
+            common::consts::TEMPLATE_TRANSFER_FACTORY_V2,
+            "a V2 split exercises the V2 factory interface, not V1's"
+        );
+        assert_eq!(submitted.actors, vec![PARTY.to_string()]);
     }
 
     // --- the instruction path: accept, reject, cancel_offer ---

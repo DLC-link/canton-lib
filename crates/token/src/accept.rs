@@ -613,6 +613,47 @@ pub mod v2 {
 mod v2_tests {
     use super::*;
 
+    /// A registry 4xx must reach the caller as an error naming the status,
+    /// not as a parse failure and not as a silent success.
+    ///
+    /// Every other stub in this crate answers 200 on the registry routes, so
+    /// the `!status.is_success()` branch of `registry::post_and_parse` had no
+    /// cover. All four registry routes share that helper, so this one test
+    /// covers the failure path of all four. Devnet cannot cover it, because
+    /// the registry does not fail on demand.
+    #[tokio::test]
+    async fn a_registry_404_reaches_the_caller_as_an_error() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path_regex(r".*/choice-contexts/[a-z]+$"))
+            .respond_with(ResponseTemplate::new(404).set_body_string("no such instruction"))
+            .mount(&server)
+            .await;
+
+        let error = v2::submit(Params {
+            transfer_offer_contract_id: "00instruction".to_string(),
+            receiver_party: "bob::1220cd".to_string(),
+            ledger_host: server.uri(),
+            access_token: "token".to_string(),
+            registry_url: server.uri(),
+            decentralized_party_id: "admin::1220ab".to_string(),
+        })
+        .await
+        .expect_err("a 404 from the registry must fail the operation");
+
+        assert!(
+            error.contains("404"),
+            "the error must name the status, got {error}"
+        );
+        assert!(
+            error.contains("no such instruction"),
+            "the error must carry what the registry said, got {error}"
+        );
+    }
+
     fn context() -> registry::accept_context::Response {
         serde_json::from_value(serde_json::json!({
             "choiceContextData": { "values": { "k": "v" } },

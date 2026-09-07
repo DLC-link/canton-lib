@@ -55,6 +55,29 @@ enum TransferDirection {
 }
 
 /// Fetch all pending TransferInstruction contracts of an instrument for a party
+/// Read a party out of a V1 transfer payload, warning if it is not one.
+///
+/// The V1 `TransferOffer` payload carries `sender` and `receiver` as bare
+/// party strings, and this read compares them as such. If a registry ever
+/// writes an account object into either field, `as_str` returns `None` and
+/// the offer drops out of every list this function feeds. That would look
+/// like "no pending transfers" rather than like an error, so say so.
+fn party_field(transfer: &serde_json::Value, field: &str) -> Option<String> {
+    let value = transfer.get(field)?;
+    match value.as_str() {
+        Some(party) => Some(party.to_string()),
+        None => {
+            log::warn!(
+                "transfer.{field} is {value}, not a party string. This read \
+                 compares bare parties, so the transfer is omitted from the \
+                 offer list rather than reported. A V2-shaped payload here \
+                 needs an account-aware read."
+            );
+            None
+        }
+    }
+}
+
 async fn fetch_transfers(
     ledger_host: String,
     party: String,
@@ -131,28 +154,10 @@ async fn fetch_transfers(
                 // Check role based on direction
                 let matches_direction = match direction {
                     TransferDirection::Incoming => {
-                        // Check if we are the receiver
-                        if let Some(receiver) = transfer.get("receiver") {
-                            if let Some(receiver_str) = receiver.as_str() {
-                                receiver_str == party
-                            } else {
-                                false
-                            }
-                        } else {
-                            false
-                        }
+                        party_field(transfer, "receiver").as_deref() == Some(party.as_str())
                     }
                     TransferDirection::Outgoing => {
-                        // Check if we are the sender
-                        if let Some(sender) = transfer.get("sender") {
-                            if let Some(sender_str) = sender.as_str() {
-                                sender_str == party
-                            } else {
-                                false
-                            }
-                        } else {
-                            false
-                        }
+                        party_field(transfer, "sender").as_deref() == Some(party.as_str())
                     }
                 };
 
@@ -163,6 +168,41 @@ async fn fetch_transfers(
         .collect();
 
     Ok(filtered)
+}
+
+#[cfg(test)]
+mod party_field_tests {
+    use super::party_field;
+    use serde_json::json;
+
+    #[test]
+    fn a_bare_party_reads_as_a_party() {
+        let transfer = json!({ "receiver": "bob::1220cd" });
+        assert_eq!(
+            party_field(&transfer, "receiver").as_deref(),
+            Some("bob::1220cd")
+        );
+    }
+
+    #[test]
+    fn a_missing_field_reads_as_none() {
+        let transfer = json!({ "sender": "alice::1220ab" });
+        assert_eq!(party_field(&transfer, "receiver"), None);
+    }
+
+    #[test]
+    fn an_account_object_reads_as_none_rather_than_matching() {
+        // The shape a V2-only registry would write. It must not compare equal
+        // to any party, and it must not panic.
+        let transfer = json!({
+            "receiver": { "owner": "bob::1220cd", "provider": null, "id": "" }
+        });
+        assert_eq!(
+            party_field(&transfer, "receiver"),
+            None,
+            "an account object is not a party and must not match one"
+        );
+    }
 }
 
 pub(crate) const REASON_META_KEY: &str = "splice.lfdecentralizedtrust.org/reason";

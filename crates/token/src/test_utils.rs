@@ -239,6 +239,10 @@ pub(crate) mod stub {
         pub(crate) actors: Vec<String>,
         pub(crate) act_as: Vec<String>,
         pub(crate) context_path: String,
+        /// The template or interface the command exercised. This is what
+        /// distinguishes a V2 command from its V1 twin on the factory path,
+        /// where both name the same choice.
+        pub(crate) template_id: String,
     }
 
     /// A server answering every transfer-instruction choice-context route and
@@ -272,10 +276,16 @@ pub(crate) mod stub {
             .await
             .expect("wiremock records requests by default");
 
+        // Instruction operations fetch a choice context; factory operations
+        // fetch a transfer factory. Either is the registry call that built
+        // the command, so accept both and let the caller assert which.
         let context_path = requests
             .iter()
-            .find(|r| r.url.path().contains("/choice-contexts/"))
-            .expect("the operation must fetch a choice context")
+            .find(|r| {
+                let path = r.url.path();
+                path.contains("/choice-contexts/") || path.ends_with("/transfer-factory")
+            })
+            .expect("the operation must call the registry to build its command")
             .url
             .path()
             .to_string();
@@ -312,6 +322,10 @@ pub(crate) mod stub {
             actors: strings(&command["choiceArgument"]["actors"]),
             act_as: strings(&submission["actAs"]),
             context_path,
+            template_id: command["templateId"]
+                .as_str()
+                .expect("a command must name its template")
+                .to_string(),
         }
     }
 }
