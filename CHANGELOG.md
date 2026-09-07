@@ -58,6 +58,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   against the threshold. A V1 client has no account label to filter on and
   reads every holding the party owns, as it did before.
 
+### Changed
+
+- **A registry POST that never reaches the host is now retried, on four
+  routes.** The routes are `registry::transfer_factory::get`,
+  `registry::transfer_factory::v2::get`, `registry::accept_context::get` and
+  `registry::accept_context::v2::get`. Each attempt waits 30 seconds, and a
+  call makes at most three attempts, so a wholly unreachable registry now
+  fails after about 90 seconds where it previously failed at once or hung
+  forever. **A response is never retried, whatever its status**: a 4xx or a
+  5xx is the registry's answer, and repeating the call would hide it. Only a
+  failure that produced no answer is retried — a refused connection, a
+  timeout, or a request the client could not build. This is a behaviour change
+  for every caller of those four routes, not only for the tests.
+  `registry::allocation_factory::get` and `registry::allocation_context::get`
+  keep the previous behaviour and do not retry.
+- The four registry routes above now share one error wording. A registry
+  failure previously produced one of four different messages depending on the
+  route; it now reports `Failed to send request to registry`,
+  `Registry request failed with status {status}: {body}` or
+  `Failed to parse registry response` from all four.
+- **Breaking:** `token::consolidate::GetUtxoCountParams` gained a required
+  `account: Option<common::transfer::v2::Account>` field, because
+  `get_utxo_count` now serves both versions. Pass `None` to reproduce the
+  behaviour of every release before 0.7.0. Issue #45 proposes deriving the
+  party from `account.owner` and dropping the separate `party` field, which
+  would remove the need for this field.
+- **Breaking:** V2 reuses V1's parameter types rather than declaring its own.
+  `accept::v2::Params`, `accept::v2::AcceptAllParams`, `reject::v2::Params`,
+  `cancel_offers::v2::Params` and `cancel_offers::v2::WithdrawAllParams` are
+  gone; each `v2` module re-exports the V1 type of the same name. The three
+  instruction params keep the V1 field name `transfer_offer_contract_id`
+  rather than renaming it to `transfer_instruction_id`, because the contract
+  id carries the same value under both versions.
+  `registry::accept_context::v2::Params.transfer_instruction_id` is unchanged,
+  since there the name describes the V2 URL segment it fills.
+
 ### Notes
 
 - **The one input a V2 entry point rejects that V1 had no way to express** is
