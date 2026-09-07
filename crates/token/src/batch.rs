@@ -1,6 +1,30 @@
 use crate::distribute;
 use serde::Deserialize;
 
+/// Log a finished batch: the two counts, then one line per failed transfer.
+///
+/// Both versions log the same [`crate::transfer::SequentialChainedResult`], so
+/// one function serves both and needs no generic.
+fn log_batch_result(result: &crate::transfer::SequentialChainedResult) {
+    log::debug!("Batch distribution complete!");
+    log::debug!("Successful transfers: {}", result.successful_count);
+    if result.failed_count > 0 {
+        log::debug!("Failed transfers: {}", result.failed_count);
+        for transfer_result in result.results.iter().filter(|r| !r.success) {
+            log::debug!(
+                "Failed transfer: {} to {} ({}): {}",
+                transfer_result.amount,
+                transfer_result.receiver,
+                transfer_result.transfer_index + 1,
+                transfer_result
+                    .error
+                    .as_ref()
+                    .unwrap_or(&"Unknown error".to_string())
+            );
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 struct CsvRecord {
     receiver: String,
@@ -84,23 +108,7 @@ pub async fn submit_from_csv(params: Params) -> Result<(), String> {
     })
     .await?;
 
-    log::debug!("Batch distribution complete!");
-    log::debug!("Successful transfers: {}", result.successful_count);
-    if result.failed_count > 0 {
-        log::debug!("Failed transfers: {}", result.failed_count);
-        for transfer_result in result.results.iter().filter(|r| !r.success) {
-            log::debug!(
-                "Failed transfer: {} to {} ({}): {}",
-                transfer_result.amount,
-                transfer_result.receiver,
-                transfer_result.transfer_index + 1,
-                transfer_result
-                    .error
-                    .as_ref()
-                    .unwrap_or(&"Unknown error".to_string())
-            );
-        }
-    }
+    log_batch_result(&result);
 
     Ok(())
 }
@@ -185,23 +193,7 @@ pub mod v2 {
         })
         .await?;
 
-        log::debug!("Batch distribution complete!");
-        log::debug!("Successful transfers: {}", result.successful_count);
-        if result.failed_count > 0 {
-            log::debug!("Failed transfers: {}", result.failed_count);
-            for transfer_result in result.results.iter().filter(|r| !r.success) {
-                log::debug!(
-                    "Failed transfer: {} to {} ({}): {}",
-                    transfer_result.amount,
-                    transfer_result.receiver,
-                    transfer_result.transfer_index + 1,
-                    transfer_result
-                        .error
-                        .as_ref()
-                        .unwrap_or(&"Unknown error".to_string())
-                );
-            }
-        }
+        super::log_batch_result(&result);
 
         Ok(())
     }

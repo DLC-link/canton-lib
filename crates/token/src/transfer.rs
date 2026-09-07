@@ -61,6 +61,51 @@ pub struct TransferResult {
     pub error: Option<String>,
 }
 
+/// Accumulates a chained run: the results, the two counts, and the callback.
+///
+/// Eleven sites across both versions repeated the same tail by hand — fire the
+/// callback, push the result, bump a counter. Each site also chose which
+/// counter to bump, so a site could bump the one that disagreed with its own
+/// `success` flag. The count is derived here, so it cannot disagree.
+struct Recorder<'a> {
+    results: Vec<TransferResult>,
+    successful_count: usize,
+    failed_count: usize,
+    callback: &'a Option<Box<TransferResultCallback>>,
+}
+
+impl<'a> Recorder<'a> {
+    fn new(callback: &'a Option<Box<TransferResultCallback>>) -> Self {
+        Self {
+            results: Vec::new(),
+            successful_count: 0,
+            failed_count: 0,
+            callback,
+        }
+    }
+
+    /// Count this result, hand it to the callback, and keep it.
+    async fn record(&mut self, result: TransferResult) {
+        if result.success {
+            self.successful_count += 1;
+        } else {
+            self.failed_count += 1;
+        }
+        if let Some(callback) = self.callback {
+            callback(result.clone()).await;
+        }
+        self.results.push(result);
+    }
+
+    fn finish(self) -> SequentialChainedResult {
+        SequentialChainedResult {
+            results: self.results,
+            successful_count: self.successful_count,
+            failed_count: self.failed_count,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct SequentialChainedResult {
     pub results: Vec<TransferResult>,
@@ -310,10 +355,8 @@ pub async fn submit_sequential_chained(
     log::debug!("Registry context fetched successfully");
 
     // Track results and current holdings
-    let mut results = Vec::new();
+    let mut recorder = Recorder::new(&params.on_transfer_complete);
     let mut current_holding_cids = params.initial_holding_cids;
-    let mut successful_count = 0;
-    let mut failed_count = 0;
 
     let total_transfers = params.recipients.len();
 
@@ -343,13 +386,7 @@ pub async fn submit_sequential_chained(
                 error: Some(error_msg),
             };
 
-            // Call callback if provided
-            if let Some(ref callback) = params.on_transfer_complete {
-                callback(result.clone()).await;
-            }
-
-            results.push(result);
-            failed_count += 1;
+            recorder.record(result).await;
             continue;
         }
 
@@ -372,13 +409,7 @@ pub async fn submit_sequential_chained(
                     error: Some(error_msg),
                 };
 
-                // Call callback if provided
-                if let Some(ref callback) = params.on_transfer_complete {
-                    callback(result.clone()).await;
-                }
-
-                results.push(result);
-                failed_count += 1;
+                recorder.record(result).await;
                 continue;
             }
         };
@@ -461,13 +492,7 @@ pub async fn submit_sequential_chained(
                             error: None,
                         };
 
-                        // Call callback if provided
-                        if let Some(ref callback) = params.on_transfer_complete {
-                            callback(result.clone()).await;
-                        }
-
-                        results.push(result);
-                        successful_count += 1;
+                        recorder.record(result).await;
 
                         // Use change as input for next transfer
                         current_holding_cids = sender_change_cids;
@@ -490,13 +515,7 @@ pub async fn submit_sequential_chained(
                             error: Some(error_msg),
                         };
 
-                        // Call callback if provided
-                        if let Some(ref callback) = params.on_transfer_complete {
-                            callback(result.clone()).await;
-                        }
-
-                        results.push(result);
-                        failed_count += 1;
+                        recorder.record(result).await;
                         // Keep current_holding_cids - we can still try the next transfer
                     }
                 }
@@ -519,13 +538,7 @@ pub async fn submit_sequential_chained(
                     error: Some(error_msg),
                 };
 
-                // Call callback if provided
-                if let Some(ref callback) = params.on_transfer_complete {
-                    callback(result.clone()).await;
-                }
-
-                results.push(result);
-                failed_count += 1;
+                recorder.record(result).await;
                 // Keep current_holding_cids - the UTXOs are still valid
             }
         }
@@ -533,15 +546,11 @@ pub async fn submit_sequential_chained(
 
     log::debug!(
         "Transfer Summary: Successful: {}, Failed: {}",
-        successful_count,
-        failed_count
+        recorder.successful_count,
+        recorder.failed_count
     );
 
-    Ok(SequentialChainedResult {
-        results,
-        successful_count,
-        failed_count,
-    })
+    Ok(recorder.finish())
 }
 
 /// Parse the transfer response to extract sender change CIDs, transfer offer CID, and update_id
@@ -621,7 +630,9 @@ fn generate_unique_reference(reference_base: &str, sender: &str, receiver: &str)
 /// exactly `[sender.owner]` on the factory choice, checked at
 /// `AllocationFactory.daml:774`.
 pub mod v2 {
-    use super::{SequentialChainedResult, TokenState, TransferResult, TransferResultCallback};
+    use super::{
+        Recorder, SequentialChainedResult, TokenState, TransferResult, TransferResultCallback,
+    };
     use crate::utils::{build_submission, ensure_reason_meta, require_owner, submit_and_wait};
     use std::collections::HashMap;
 
@@ -857,10 +868,8 @@ pub mod v2 {
 
         log::debug!("Registry context fetched successfully");
 
-        let mut results = Vec::new();
+        let mut recorder = Recorder::new(&params.on_transfer_complete);
         let mut current_holding_cids = params.initial_holding_cids;
-        let mut successful_count = 0;
-        let mut failed_count = 0;
 
         let total_transfers = params.recipients.len();
 
@@ -884,11 +893,7 @@ pub mod v2 {
                         raw_response: None,
                         error: Some(error_msg),
                     };
-                    if let Some(ref callback) = params.on_transfer_complete {
-                        callback(result.clone()).await;
-                    }
-                    results.push(result);
-                    failed_count += 1;
+                    recorder.record(result).await;
                     continue;
                 }
             };
@@ -916,11 +921,7 @@ pub mod v2 {
                     raw_response: None,
                     error: Some(error_msg),
                 };
-                if let Some(ref callback) = params.on_transfer_complete {
-                    callback(result.clone()).await;
-                }
-                results.push(result);
-                failed_count += 1;
+                recorder.record(result).await;
                 continue;
             }
 
@@ -940,11 +941,7 @@ pub mod v2 {
                         raw_response: None,
                         error: Some(error_msg),
                     };
-                    if let Some(ref callback) = params.on_transfer_complete {
-                        callback(result.clone()).await;
-                    }
-                    results.push(result);
-                    failed_count += 1;
+                    recorder.record(result).await;
                     continue;
                 }
             };
@@ -1000,11 +997,7 @@ pub mod v2 {
                             raw_response: Some(response_raw.clone()),
                             error: None,
                         };
-                        if let Some(ref callback) = params.on_transfer_complete {
-                            callback(result.clone()).await;
-                        }
-                        results.push(result);
-                        successful_count += 1;
+                        recorder.record(result).await;
                         current_holding_cids = sender_change_cids;
                     }
                     Err(e) => {
@@ -1024,11 +1017,7 @@ pub mod v2 {
                             raw_response: Some(response_raw),
                             error: Some(error_msg),
                         };
-                        if let Some(ref callback) = params.on_transfer_complete {
-                            callback(result.clone()).await;
-                        }
-                        results.push(result);
-                        failed_count += 1;
+                        recorder.record(result).await;
                     }
                 },
                 Err(e) => {
@@ -1048,26 +1037,18 @@ pub mod v2 {
                         raw_response: None,
                         error: Some(error_msg),
                     };
-                    if let Some(ref callback) = params.on_transfer_complete {
-                        callback(result.clone()).await;
-                    }
-                    results.push(result);
-                    failed_count += 1;
+                    recorder.record(result).await;
                 }
             }
         }
 
         log::debug!(
             "Transfer Summary: Successful: {}, Failed: {}",
-            successful_count,
-            failed_count
+            recorder.successful_count,
+            recorder.failed_count
         );
 
-        Ok(SequentialChainedResult {
-            results,
-            successful_count,
-            failed_count,
-        })
+        Ok(recorder.finish())
     }
 }
 
