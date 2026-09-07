@@ -795,7 +795,12 @@ pub mod v2 {
         if params.recipients.is_empty() {
             return Err("No recipients to process".to_string());
         }
-        require_owner(&params.sender, "sender")
+        let sender = require_owner(&params.sender, "sender")?;
+        // The caller posts the first recipient to the registry in the template
+        // transfer it builds below, before the loop's per-recipient guard can
+        // see it. Without this check that account reaches the registry.
+        require_owner(&params.recipients[0].receiver, "recipients[0].receiver")?;
+        Ok(sender)
     }
 
     /// Submit many transfers sequentially, chaining each transfer's change
@@ -1338,6 +1343,27 @@ mod v2_guard_tests {
         ))
         .unwrap_err();
         assert!(err.contains("No recipients"), "got {err}");
+    }
+
+    #[test]
+    fn v2_chained_rejects_a_special_first_recipient() {
+        // The first recipient is the one `submit_sequential_chained` posts to
+        // the registry, in the template transfer it builds before the loop.
+        // The per-recipient guard inside the loop runs after that POST, so
+        // without this check the account reaches the registry.
+        let err = v2::validate(&chained_params(
+            common::transfer::v2::Account::basic("alice::1220ab"),
+            vec![v2::Recipient {
+                receiver: special_account(),
+                amount: common::decimal::DamlDecimal::parse("1.0").unwrap(),
+                reference: None,
+            }],
+        ))
+        .unwrap_err();
+        assert!(
+            err.contains("recipients[0].receiver"),
+            "the guard must name the parameter, got {err}"
+        );
     }
 
     #[test]
