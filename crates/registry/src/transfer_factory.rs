@@ -23,26 +23,7 @@ pub fn factory_url(registry_url: &str, decentralized_party_id: &str) -> String {
 
 pub async fn get(params: Params) -> Result<common::transfer_factory::Response, String> {
     let url = factory_url(&params.registry_url, &params.decentralized_party_id);
-    let response = crate::post_json(&url, &params.request)
-        .await
-        .map_err(|e| format!("{}", e))?;
-
-    let status = response.status();
-    let body_raw = response
-        .text()
-        .await
-        .map_err(|e| format!("Failed to read response: {}", e))?;
-
-    if !status.is_success() {
-        return Err(format!(
-            "Transfer factory request failed [{}]: {:?}",
-            status, body_raw
-        ));
-    }
-
-    let body: common::transfer_factory::Response =
-        serde_json::from_str(&body_raw).map_err(|e| format!("Failed to parse response: {}", e))?;
-    Ok(body)
+    crate::post_and_parse(&url, &params.request).await
 }
 
 /// The V2 transfer-factory route.
@@ -75,23 +56,7 @@ pub mod v2 {
 
     pub async fn get(params: Params) -> Result<common::transfer_factory::Response, String> {
         let url = factory_url(&params.registry_url, &params.decentralized_party_id);
-        let response = crate::post_json(&url, &params.request)
-            .await
-            .map_err(|e| format!("{e}"))?;
-
-        let status = response.status();
-        let body_raw = response
-            .text()
-            .await
-            .map_err(|e| format!("Failed to read response: {e}"))?;
-
-        if !status.is_success() {
-            return Err(format!(
-                "V2 transfer factory request failed [{status}]: {body_raw:?}"
-            ));
-        }
-
-        serde_json::from_str(&body_raw).map_err(|e| format!("Failed to parse response: {e}"))
+        crate::post_and_parse(&url, &params.request).await
     }
 }
 

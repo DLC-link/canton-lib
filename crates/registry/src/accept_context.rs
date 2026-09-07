@@ -68,28 +68,7 @@ pub async fn get(params: Params) -> Result<Response, String> {
         &params.transfer_offer_contract_id,
     );
 
-    let response = crate::post_json(&url, &params.request)
-        .await
-        .map_err(|e| format!("Failed to send request to registry: {e}"))?;
-
-    if !response.status().is_success() {
-        let status = response.status();
-        let body = response
-            .text()
-            .await
-            .unwrap_or_else(|_| "Unable to read response body".to_string());
-        return Err(format!(
-            "Registry request failed with status {}: {}",
-            status, body
-        ));
-    }
-
-    let response_data: Response = response
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse registry response: {e}"))?;
-
-    Ok(response_data)
+    crate::post_and_parse(&url, &params.request).await
 }
 
 /// The V2 transfer-instruction choice-context routes.
@@ -150,25 +129,7 @@ pub mod v2 {
             params.choice,
         );
 
-        let response = crate::post_json(&url, &params.request)
-            .await
-            .map_err(|e| format!("Failed to send request to registry: {e}"))?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response
-                .text()
-                .await
-                .unwrap_or_else(|_| "Unable to read response body".to_string());
-            return Err(format!(
-                "Registry request failed with status {status}: {body}"
-            ));
-        }
-
-        response
-            .json()
-            .await
-            .map_err(|e| format!("Failed to parse registry response: {e}"))
+        crate::post_and_parse(&url, &params.request).await
     }
 }
 

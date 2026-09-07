@@ -58,6 +58,39 @@ fn reached_no_host(e: &reqwest::Error) -> bool {
     e.is_connect() || e.is_timeout() || e.is_request()
 }
 
+/// POST `body` to `url`, then parse the registry's JSON answer.
+///
+/// The four registry `get` functions differ only in their URL and their
+/// response type, so each one is now this call plus a URL. Keeping the
+/// status check here means one test covers the failure path of all four.
+///
+/// The body is read as text before parsing, so a non-success status can
+/// report what the registry actually said. A response is never retried,
+/// whatever its status — see [`post_json`].
+pub(crate) async fn post_and_parse<B, T>(url: &str, body: &B) -> Result<T, String>
+where
+    B: serde::Serialize + ?Sized,
+    T: serde::de::DeserializeOwned,
+{
+    let response = post_json(url, body)
+        .await
+        .map_err(|e| format!("Failed to send request to registry: {e}"))?;
+
+    let status = response.status();
+    let body_raw = response
+        .text()
+        .await
+        .map_err(|e| format!("Failed to read registry response: {e}"))?;
+
+    if !status.is_success() {
+        return Err(format!(
+            "Registry request failed with status {status}: {body_raw}"
+        ));
+    }
+
+    serde_json::from_str(&body_raw).map_err(|e| format!("Failed to parse registry response: {e}"))
+}
+
 #[cfg(test)]
 mod retry_tests {
     use super::*;
@@ -106,6 +139,47 @@ mod retry_tests {
             server.received_requests().await.unwrap().len(),
             ATTEMPTS as usize,
             "a timeout must be retried, and only up to the budget"
+        );
+    }
+
+    /// The case the retry exists for: the first attempt never reaches the host,
+    /// the second one answers, and the caller sees a success.
+    ///
+    /// The other three tests all end in a failure or a single request, so an
+    /// implementation that retried and then returned the first error would
+    /// pass them. This one fails against that implementation.
+    #[tokio::test]
+    async fn a_transport_failure_recovers_on_the_next_attempt() {
+        let server = MockServer::start().await;
+
+        // First attempt: answers later than the per-attempt timeout allows, so
+        // this client gives up on it and retries.
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_delay(Duration::from_secs(30)))
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+
+        // Second attempt: falls through to this one and answers at once.
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(body()))
+            .mount(&server)
+            .await;
+
+        let response = post_json_within(&server.uri(), &body(), Duration::from_millis(100))
+            .await
+            .expect("the second attempt answers, so the call must succeed");
+        assert_eq!(response.status(), 200);
+
+        let requests = server.received_requests().await.unwrap();
+        assert_eq!(
+            requests.len(),
+            2,
+            "the first attempt must be retried exactly once, not abandoned or repeated to the budget"
+        );
+        assert_eq!(
+            requests[0].body, requests[1].body,
+            "the retry must carry the same body as the attempt it replaces"
         );
     }
 
