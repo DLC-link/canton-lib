@@ -251,155 +251,89 @@ impl TokenClient {
     /// Accept one incoming transfer offer by contract id.
     pub async fn accept(&mut self, transfer_offer_cid: String) -> Result<(), String> {
         let access_token = self.fresh_token().await?;
+        let params = accept::Params {
+            transfer_offer_contract_id: transfer_offer_cid,
+            receiver_party: self.config.party.clone(),
+            ledger_host: self.config.ledger_host.clone(),
+            access_token,
+            registry_url: self.config.registry_url.clone(),
+            decentralized_party_id: self.admin(),
+        };
         match self.config.version {
-            common::TokenStandardVersion::V1 => {
-                accept::submit(accept::Params {
-                    transfer_offer_contract_id: transfer_offer_cid,
-                    receiver_party: self.config.party.clone(),
-                    ledger_host: self.config.ledger_host.clone(),
-                    access_token,
-                    registry_url: self.config.registry_url.clone(),
-                    decentralized_party_id: self.admin(),
-                })
-                .await
-            }
-            common::TokenStandardVersion::V2 => {
-                accept::v2::submit(accept::v2::Params {
-                    transfer_instruction_id: transfer_offer_cid,
-                    receiver_party: self.config.party.clone(),
-                    ledger_host: self.config.ledger_host.clone(),
-                    access_token,
-                    registry_url: self.config.registry_url.clone(),
-                    decentralized_party_id: self.admin(),
-                })
-                .await
-            }
+            common::TokenStandardVersion::V1 => accept::submit(params).await,
+            common::TokenStandardVersion::V2 => accept::v2::submit(params).await,
         }
     }
 
     /// Accept all pending incoming transfers of this token.
     pub async fn accept_all(&mut self) -> Result<accept::AcceptAllResult, String> {
+        let params = accept::AcceptAllParams {
+            receiver_party: self.config.party.clone(),
+            instrument_id: self.config.instrument.clone(),
+            ledger_host: self.config.ledger_host.clone(),
+            registry_url: self.config.registry_url.clone(),
+            decentralized_party_id: self.admin(),
+            keycloak_client_id: self.config.keycloak.client_id.clone(),
+            keycloak_username: self.config.keycloak.username.clone(),
+            keycloak_password: self.config.keycloak.password.clone(),
+            keycloak_url: self.config.keycloak.url.clone(),
+        };
         match self.config.version {
-            common::TokenStandardVersion::V1 => {
-                accept::accept_all(accept::AcceptAllParams {
-                    receiver_party: self.config.party.clone(),
-                    instrument_id: self.config.instrument.clone(),
-                    ledger_host: self.config.ledger_host.clone(),
-                    registry_url: self.config.registry_url.clone(),
-                    decentralized_party_id: self.admin(),
-                    keycloak_client_id: self.config.keycloak.client_id.clone(),
-                    keycloak_username: self.config.keycloak.username.clone(),
-                    keycloak_password: self.config.keycloak.password.clone(),
-                    keycloak_url: self.config.keycloak.url.clone(),
-                })
-                .await
-            }
-            common::TokenStandardVersion::V2 => {
-                accept::v2::accept_all(accept::v2::AcceptAllParams {
-                    receiver_party: self.config.party.clone(),
-                    instrument_id: self.config.instrument.clone(),
-                    ledger_host: self.config.ledger_host.clone(),
-                    registry_url: self.config.registry_url.clone(),
-                    decentralized_party_id: self.admin(),
-                    keycloak_client_id: self.config.keycloak.client_id.clone(),
-                    keycloak_username: self.config.keycloak.username.clone(),
-                    keycloak_password: self.config.keycloak.password.clone(),
-                    keycloak_url: self.config.keycloak.url.clone(),
-                })
-                .await
-            }
+            common::TokenStandardVersion::V1 => accept::accept_all(params).await,
+            common::TokenStandardVersion::V2 => accept::v2::accept_all(params).await,
         }
     }
 
     /// Reject one incoming transfer offer by contract id.
     pub async fn reject(&mut self, transfer_offer_cid: String) -> Result<(), String> {
         let access_token = self.fresh_token().await?;
+        let params = reject::Params {
+            transfer_offer_contract_id: transfer_offer_cid,
+            receiver_party: self.config.party.clone(),
+            ledger_host: self.config.ledger_host.clone(),
+            access_token,
+            registry_url: self.config.registry_url.clone(),
+            decentralized_party_id: self.admin(),
+        };
         match self.config.version {
-            common::TokenStandardVersion::V1 => {
-                reject::submit(reject::Params {
-                    transfer_offer_contract_id: transfer_offer_cid,
-                    receiver_party: self.config.party.clone(),
-                    ledger_host: self.config.ledger_host.clone(),
-                    access_token,
-                    registry_url: self.config.registry_url.clone(),
-                    decentralized_party_id: self.admin(),
-                })
-                .await
-            }
-            common::TokenStandardVersion::V2 => {
-                reject::v2::submit(reject::v2::Params {
-                    transfer_instruction_id: transfer_offer_cid,
-                    receiver_party: self.config.party.clone(),
-                    ledger_host: self.config.ledger_host.clone(),
-                    access_token,
-                    registry_url: self.config.registry_url.clone(),
-                    decentralized_party_id: self.admin(),
-                })
-                .await
-            }
+            common::TokenStandardVersion::V1 => reject::submit(params).await,
+            common::TokenStandardVersion::V2 => reject::v2::submit(params).await,
         }
     }
 
     /// Cancel (withdraw) one outgoing transfer offer by contract id.
     pub async fn cancel_offer(&mut self, transfer_offer_cid: String) -> Result<(), String> {
         let access_token = self.fresh_token().await?;
+        let params = cancel_offers::Params {
+            transfer_offer_contract_id: transfer_offer_cid,
+            sender_party: self.config.party.clone(),
+            ledger_host: self.config.ledger_host.clone(),
+            access_token,
+            registry_url: self.config.registry_url.clone(),
+            decentralized_party_id: self.admin(),
+        };
         match self.config.version {
-            common::TokenStandardVersion::V1 => {
-                cancel_offers::submit(cancel_offers::Params {
-                    transfer_offer_contract_id: transfer_offer_cid,
-                    sender_party: self.config.party.clone(),
-                    ledger_host: self.config.ledger_host.clone(),
-                    access_token,
-                    registry_url: self.config.registry_url.clone(),
-                    decentralized_party_id: self.admin(),
-                })
-                .await
-            }
-            common::TokenStandardVersion::V2 => {
-                cancel_offers::v2::submit(cancel_offers::v2::Params {
-                    transfer_instruction_id: transfer_offer_cid,
-                    sender_party: self.config.party.clone(),
-                    ledger_host: self.config.ledger_host.clone(),
-                    access_token,
-                    registry_url: self.config.registry_url.clone(),
-                    decentralized_party_id: self.admin(),
-                })
-                .await
-            }
+            common::TokenStandardVersion::V1 => cancel_offers::submit(params).await,
+            common::TokenStandardVersion::V2 => cancel_offers::v2::submit(params).await,
         }
     }
 
     /// Cancel all pending outgoing transfers of this token.
     pub async fn cancel_all_offers(&mut self) -> Result<cancel_offers::WithdrawAllResult, String> {
+        let params = cancel_offers::WithdrawAllParams {
+            sender_party: self.config.party.clone(),
+            instrument_id: self.config.instrument.clone(),
+            ledger_host: self.config.ledger_host.clone(),
+            registry_url: self.config.registry_url.clone(),
+            decentralized_party_id: self.admin(),
+            keycloak_client_id: self.config.keycloak.client_id.clone(),
+            keycloak_username: self.config.keycloak.username.clone(),
+            keycloak_password: self.config.keycloak.password.clone(),
+            keycloak_url: self.config.keycloak.url.clone(),
+        };
         match self.config.version {
-            common::TokenStandardVersion::V1 => {
-                cancel_offers::withdraw_all(cancel_offers::WithdrawAllParams {
-                    sender_party: self.config.party.clone(),
-                    instrument_id: self.config.instrument.clone(),
-                    ledger_host: self.config.ledger_host.clone(),
-                    registry_url: self.config.registry_url.clone(),
-                    decentralized_party_id: self.admin(),
-                    keycloak_client_id: self.config.keycloak.client_id.clone(),
-                    keycloak_username: self.config.keycloak.username.clone(),
-                    keycloak_password: self.config.keycloak.password.clone(),
-                    keycloak_url: self.config.keycloak.url.clone(),
-                })
-                .await
-            }
-            common::TokenStandardVersion::V2 => {
-                cancel_offers::v2::withdraw_all(cancel_offers::v2::WithdrawAllParams {
-                    sender_party: self.config.party.clone(),
-                    instrument_id: self.config.instrument.clone(),
-                    ledger_host: self.config.ledger_host.clone(),
-                    registry_url: self.config.registry_url.clone(),
-                    decentralized_party_id: self.admin(),
-                    keycloak_client_id: self.config.keycloak.client_id.clone(),
-                    keycloak_username: self.config.keycloak.username.clone(),
-                    keycloak_password: self.config.keycloak.password.clone(),
-                    keycloak_url: self.config.keycloak.url.clone(),
-                })
-                .await
-            }
+            common::TokenStandardVersion::V1 => cancel_offers::withdraw_all(params).await,
+            common::TokenStandardVersion::V2 => cancel_offers::v2::withdraw_all(params).await,
         }
     }
 

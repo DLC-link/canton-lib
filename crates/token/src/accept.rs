@@ -385,28 +385,10 @@ pub mod v2 {
     pub(crate) const CONTEXT_CHOICE: registry::accept_context::v2::InstructionChoice =
         registry::accept_context::v2::InstructionChoice::Accept;
 
-    pub struct Params {
-        /// The contract ID of the TransferInstruction to accept.
-        pub transfer_instruction_id: String,
-        /// The receiver party ID; must match the transfer's receiver.
-        pub receiver_party: String,
-        pub ledger_host: String,
-        pub access_token: String,
-        pub registry_url: String,
-        pub decentralized_party_id: String,
-    }
-
-    pub struct AcceptAllParams {
-        pub receiver_party: String,
-        pub instrument_id: common::transfer::InstrumentId,
-        pub ledger_host: String,
-        pub registry_url: String,
-        pub decentralized_party_id: String,
-        pub keycloak_client_id: String,
-        pub keycloak_username: String,
-        pub keycloak_password: String,
-        pub keycloak_url: String,
-    }
+    // V2 reuses V1's `Params` and `AcceptAllParams`. The fields are identical,
+    // and the contract id carries the same value under both versions, so a
+    // separate pair of types only forced the caller to restate it.
+    pub use super::{AcceptAllParams, Params};
 
     /// A V2 exercise command on a transfer instruction.
     ///
@@ -468,7 +450,7 @@ pub mod v2 {
         let context = fetch_context(
             &params.registry_url,
             &params.decentralized_party_id,
-            &params.transfer_instruction_id,
+            &params.transfer_offer_contract_id,
             CONTEXT_CHOICE,
         )
         .await?;
@@ -479,7 +461,7 @@ pub mod v2 {
             actors.clone(),
             context.disclosed_contracts.clone(),
             vec![instruction_command(
-                &params.transfer_instruction_id,
+                &params.transfer_offer_contract_id,
                 CHOICE,
                 actors,
                 &context,
@@ -742,7 +724,7 @@ mod v2_tests {
         let server = crate::test_utils::stub::instruction_server().await;
 
         v2::submit(v2::Params {
-            transfer_instruction_id: "00instruction".to_string(),
+            transfer_offer_contract_id: "00instruction".to_string(),
             receiver_party: "bob::1220cd".to_string(),
             ledger_host: server.uri(),
             access_token: "test-access-token".to_string(),

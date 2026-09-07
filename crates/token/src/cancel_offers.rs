@@ -591,14 +591,8 @@ pub mod v2 {
 
     const BATCH_SIZE: usize = 5;
 
-    pub struct Params {
-        pub transfer_instruction_id: String,
-        pub sender_party: String,
-        pub ledger_host: String,
-        pub access_token: String,
-        pub registry_url: String,
-        pub decentralized_party_id: String,
-    }
+    // V2 reuses V1's `Params`; see the note in `accept::v2`.
+    pub use super::Params;
 
     pub struct WithdrawBatchParams {
         pub contract_ids: Vec<String>,
@@ -609,17 +603,8 @@ pub mod v2 {
         pub decentralized_party_id: String,
     }
 
-    pub struct WithdrawAllParams {
-        pub sender_party: String,
-        pub instrument_id: common::transfer::InstrumentId,
-        pub ledger_host: String,
-        pub registry_url: String,
-        pub decentralized_party_id: String,
-        pub keycloak_client_id: String,
-        pub keycloak_username: String,
-        pub keycloak_password: String,
-        pub keycloak_url: String,
-    }
+    // V2 reuses V1's `WithdrawAllParams`; the fields are identical.
+    pub use super::WithdrawAllParams;
 
     /// Withdraw the given contract ids as one atomic transaction.
     async fn submit_withdraws(
@@ -648,7 +633,7 @@ pub mod v2 {
         let context = fetch_context(
             &params.registry_url,
             &params.decentralized_party_id,
-            &params.transfer_instruction_id,
+            &params.transfer_offer_contract_id,
             CONTEXT_CHOICE,
         )
         .await?;
@@ -656,7 +641,7 @@ pub mod v2 {
         let actors = vec![params.sender_party];
 
         submit_withdraws(
-            std::slice::from_ref(&params.transfer_instruction_id),
+            std::slice::from_ref(&params.transfer_offer_contract_id),
             &actors,
             &params.ledger_host,
             &params.access_token,
@@ -1216,7 +1201,7 @@ mod v2_tests {
         let server = crate::test_utils::stub::instruction_server().await;
 
         v2::submit(v2::Params {
-            transfer_instruction_id: "00instruction".to_string(),
+            transfer_offer_contract_id: "00instruction".to_string(),
             sender_party: "alice::1220ab".to_string(),
             ledger_host: server.uri(),
             access_token: "test-access-token".to_string(),
