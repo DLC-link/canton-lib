@@ -122,52 +122,121 @@ async fn fetch_transfers(
     // Filter for the requested instrument's transfers based on direction
     let filtered: Vec<ledger::models::JsActiveContract> = result
         .into_iter()
-        .filter(|ac| {
-            if let Some(create_arg) = &ac.created_event.create_argument
-                && let Some(transfer) = create_arg.get("transfer")
-            {
-                // Check if instrumentId matches the requested instrument
-                let is_instrument = if let Some(instrument) = transfer.get("instrumentId") {
-                    let id_ok = if let Some(id) = instrument.get("id") {
-                        if let Some(id_str) = id.as_str() {
-                            id_str == instrument_id.id
-                        } else {
-                            false
-                        }
-                    } else {
-                        false
-                    };
-                    let admin_ok = if let Some(admin) = instrument.get("admin") {
-                        if let Some(admin_str) = admin.as_str() {
-                            admin_str == instrument_id.admin
-                        } else {
-                            false
-                        }
-                    } else {
-                        false
-                    };
-                    id_ok && admin_ok
-                } else {
-                    false
-                };
-
-                // Check role based on direction
-                let matches_direction = match direction {
-                    TransferDirection::Incoming => {
-                        party_field(transfer, "receiver").as_deref() == Some(party.as_str())
-                    }
-                    TransferDirection::Outgoing => {
-                        party_field(transfer, "sender").as_deref() == Some(party.as_str())
-                    }
-                };
-
-                return is_instrument && matches_direction;
-            }
-            false
-        })
+        .filter(|ac| wanted_transfer(ac, &instrument_id, &party, &direction))
         .collect();
 
     Ok(filtered)
+}
+
+/// Does this transfer offer belong in the result: an offer of `instrument` in
+/// which `party` plays the role `direction` names?
+///
+/// Split out of [`fetch_transfers`], which opens a websocket and so cannot be
+/// reached by a unit test. Keeping the rules here means each one has tests --
+/// the same reason `active_contracts::wanted` exists.
+fn wanted_transfer(
+    ac: &ledger::models::JsActiveContract,
+    instrument: &common::transfer::InstrumentId,
+    party: &str,
+    direction: &TransferDirection,
+) -> bool {
+    let Some(create_arg) = &ac.created_event.create_argument else {
+        return false;
+    };
+    let Some(transfer) = create_arg.get("transfer") else {
+        return false;
+    };
+
+    // The admin decides instrument identity, not the ticker. A foreign
+    // registrar can create a `TransferOffer` naming any receiver, because the
+    // receiver is only an observer of it (`utility-registry-app-v0`,
+    // `Utility/Registry/App/V0/Model/Transfer.daml:33-34`). Comparing the
+    // ticker alone would admit that offer.
+    let field = |key: &str| -> Option<&str> {
+        transfer
+            .get("instrumentId")
+            .and_then(|instrument_id| instrument_id.get(key))
+            .and_then(|value| value.as_str())
+    };
+    let is_instrument = field("id") == Some(instrument.id.as_str())
+        && field("admin") == Some(instrument.admin.as_str());
+
+    let matches_direction = match direction {
+        TransferDirection::Incoming => party_field(transfer, "receiver").as_deref() == Some(party),
+        TransferDirection::Outgoing => party_field(transfer, "sender").as_deref() == Some(party),
+    };
+
+    is_instrument && matches_direction
+}
+
+#[cfg(test)]
+mod wanted_transfer_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn offer(admin: &str, id: &str) -> ledger::models::JsActiveContract {
+        let created_event = ledger::models::CreatedEvent {
+            contract_id: "00cid".to_string(),
+            create_argument: Some(json!({
+                "transfer": {
+                    "instrumentId": { "admin": admin, "id": id },
+                    "sender": "bob::1220cd",
+                    "receiver": "alice::1220ab",
+                    "amount": "1.0",
+                }
+            })),
+            ..Default::default()
+        };
+        ledger::models::JsActiveContract {
+            created_event: Box::new(created_event),
+            ..Default::default()
+        }
+    }
+
+    fn instrument() -> common::transfer::InstrumentId {
+        common::transfer::InstrumentId {
+            admin: "admin::1220ef".to_string(),
+            id: "CBTC".to_string(),
+        }
+    }
+
+    #[test]
+    fn an_incoming_offer_of_the_instrument_is_wanted() {
+        assert!(wanted_transfer(
+            &offer("admin::1220ef", "CBTC"),
+            &instrument(),
+            "alice::1220ab",
+            &TransferDirection::Incoming
+        ));
+    }
+
+    #[test]
+    fn a_same_ticker_offer_under_another_admin_is_not_wanted() {
+        assert!(
+            !wanted_transfer(
+                &offer("attacker::1220aa", "CBTC"),
+                &instrument(),
+                "alice::1220ab",
+                &TransferDirection::Incoming
+            ),
+            "the receiver is only an observer of a TransferOffer, so any \
+             registrar can push one at any party. accept_all feeds this list \
+             to the registry, so a foreign offer must never enter it"
+        );
+    }
+
+    #[test]
+    fn the_wrong_direction_is_not_wanted() {
+        // `party` is the receiver in the fixture, so an outgoing read must
+        // reject it. Without this, a filter that ignored `direction`
+        // entirely would still pass the two cases above.
+        assert!(!wanted_transfer(
+            &offer("admin::1220ef", "CBTC"),
+            &instrument(),
+            "alice::1220ab",
+            &TransferDirection::Outgoing
+        ));
+    }
 }
 
 #[cfg(test)]

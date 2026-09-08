@@ -179,6 +179,24 @@ mod label_tests {
     }
 
     #[test]
+    fn a_same_ticker_holding_under_another_admin_is_not_wanted() {
+        // The case above varies only `id`, so it exercises the `id` conjunct
+        // alone. This one holds `id` fixed and varies `admin`, which is the
+        // conjunct that decides instrument identity.
+        let view = json!({
+            "instrumentId": { "admin": "attacker::1220aa", "id": "CBTC" },
+            "amount": "1.0",
+            "lock": null,
+        });
+        assert!(
+            !wanted(&holding(view), &instrument(), None),
+            "a foreign registrar's same-ticker holding must not enter the \
+             input holding set: the registry rejects the whole transaction \
+             at expectedAdmin rather than skipping the holding"
+        );
+    }
+
+    #[test]
     fn a_locked_holding_is_not_wanted() {
         let view = json!({
             "instrumentId": { "admin": "admin::1220ef", "id": "CBTC" },
