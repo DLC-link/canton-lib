@@ -75,6 +75,23 @@ pub struct ChoiceContext {
     pub disclosed_contracts: Vec<transfer::DisclosedContract>,
 }
 
+/// V2 form of the `TransferFactory_Transfer` choice arguments.
+///
+/// V2 drops `expectedAdmin` and adds `actors`. `ExtraArgs`, `Context`,
+/// `ContextValue`, `Meta`, `MetaValue`, `Response` and `ChoiceContext` are
+/// version-neutral and reused unchanged.
+pub mod v2 {
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Serialize, Deserialize, Debug)]
+    pub struct ChoiceArguments {
+        pub transfer: crate::transfer::v2::Transfer,
+        pub actors: Vec<String>,
+        #[serde(rename = "extraArgs")]
+        pub extra_args: super::ExtraArgs,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

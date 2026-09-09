@@ -433,18 +433,17 @@ fn parse_accept_credential_offer_response(
     let events = &response.transaction.events;
 
     for event in events {
-        if let Some(created) = crate::event_helpers::as_created_event(event) {
-            if created
+        if let Some(created) = crate::event_helpers::as_created_event(event)
+            && created
                 .template_id
                 .ends_with(":Utility.Credential.V0.Credential:Credential")
-            {
-                let active_contract = JsActiveContract {
-                    created_event: Box::new(created.clone()),
-                    reassignment_counter: 0,
-                    synchronizer_id: String::new(),
-                };
-                return UserCredential::from_active_contract(&active_contract);
-            }
+        {
+            let active_contract = JsActiveContract {
+                created_event: Box::new(created.clone()),
+                reassignment_counter: 0,
+                synchronizer_id: String::new(),
+            };
+            return UserCredential::from_active_contract(&active_contract);
         }
     }
 
