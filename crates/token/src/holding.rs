@@ -146,10 +146,10 @@ mod tests {
 
         let error = Holding::from_active_contract(&contract(Some(argument))).unwrap_err();
 
-        assert!(
-            error.starts_with("Invalid 'amount' field"),
-            "unexpected error: {error}"
-        );
+        // The detail comes from the decimal parser, so derive it rather than
+        // pinning wording this crate does not own.
+        let detail = DamlDecimal::parse("not a number").unwrap_err();
+        assert_eq!(error, format!("Invalid 'amount' field: {detail}"));
     }
 
     #[test]
