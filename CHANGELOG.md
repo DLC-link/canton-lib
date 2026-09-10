@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Unit tests for `token::holding::Holding`, which had none. They cover the
+  four parsed fields, the six error messages and the lock check, including a
+  null lock.
+
 ## [0.7.0] - 2026-09-09
 
 ### Added
