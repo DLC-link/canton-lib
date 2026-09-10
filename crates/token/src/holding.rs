@@ -193,7 +193,7 @@ mod tests {
     }
 
     #[test]
-    fn a_holding_holding_a_lock_is_locked() {
+    fn a_holding_with_a_lock_is_locked() {
         let mut argument = payload();
         argument["lock"] = json!({ "holders": ["alice::1220ab"] });
 
