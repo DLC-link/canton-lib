@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-09-11
+
+### Changed — breaking
+
+- `token::holding::Holding` carries the instrument admin and the account id.
+  `instrument_id` changes type from `String`, which held the ticker alone, to
+  `common::transfer::InstrumentId`, which holds the admin and the ticker. The
+  new `account_id` field holds the payload's `label`. A caller comparing
+  `h.instrument_id == "CBTC"` no longer compiles, which is the point: the
+  ticker alone does not identify an instrument, and two registrars can both
+  issue `CBTC`.
+- `common::transfer::InstrumentId` derives `PartialEq` and `Eq`, so a caller
+  compares a whole instrument instead of its two fields separately.
+
+### Added
+
+- Unit tests for `token::holding::Holding`, which had none. They cover the
+  five parsed fields, the seven error messages and the lock check, including a
+  null lock and an empty account label.
+
 ## [0.7.0] - 2026-09-09
 
 ### Added
