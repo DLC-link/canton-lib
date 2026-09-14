@@ -15,6 +15,13 @@ pub struct InstrumentId {
     /// app would use its own template name, and this field would still be
     /// `admin`.
     pub admin: String,
+    /// The identifier the admin uses for the instrument, such as `CBTC`.
+    ///
+    /// This is unique per admin, not globally: `HoldingV1.daml:16-19` says it
+    /// "MUST be unique and unambiguous per instrument admin". So `id` alone
+    /// does not name an instrument, and `admin` is what makes the pair unique.
+    /// Compare a whole `InstrumentId`; comparing this field alone admits
+    /// another registrar's token of the same name.
     pub id: String,
 }
 
