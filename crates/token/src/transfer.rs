@@ -35,7 +35,7 @@ pub struct Recipient {
 pub struct SequentialChainedParams {
     pub recipients: Vec<Recipient>,
     pub sender: String,
-    pub instrument_id: common::transfer::InstrumentId,
+    pub instrument_id: common::instrument::InstrumentId,
     pub initial_holding_cids: Vec<String>,
     pub ledger_host: String,
     pub registry_url: String,
@@ -654,7 +654,7 @@ pub mod v2 {
     pub struct SequentialChainedParams {
         pub recipients: Vec<Recipient>,
         pub sender: common::transfer::v2::Account,
-        pub instrument_id: common::transfer::InstrumentId,
+        pub instrument_id: common::instrument::InstrumentId,
         pub initial_holding_cids: Vec<String>,
         pub ledger_host: String,
         pub registry_url: String,
@@ -1180,7 +1180,7 @@ mod v2_guard_tests {
             sender,
             receiver: common::transfer::v2::Account::basic("bob::1220cd"),
             amount: common::decimal::DamlDecimal::parse("1.0").unwrap(),
-            instrument_id: common::transfer::InstrumentId {
+            instrument_id: common::instrument::InstrumentId {
                 admin: "admin::1220ef".to_string(),
                 id: "CBTC".to_string(),
             },
@@ -1283,7 +1283,7 @@ mod v2_guard_tests {
         v2::SequentialChainedParams {
             recipients,
             sender,
-            instrument_id: common::transfer::InstrumentId {
+            instrument_id: common::instrument::InstrumentId {
                 admin: "admin::1220ef".to_string(),
                 id: "CBTC".to_string(),
             },

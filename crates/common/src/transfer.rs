@@ -1,3 +1,4 @@
+use crate::instrument::InstrumentId;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -22,20 +23,6 @@ pub struct Meta {
     pub values: Option<HashMap<String, String>>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-pub struct InstrumentId {
-    /// The party that administers the instrument.
-    ///
-    /// This type mirrors `Splice.Api.Token.HoldingV1.InstrumentId`, so the
-    /// field keeps the Token Standard's name. The utility registry calls the
-    /// same party `registrar` in its `Holding` template, and `source` in
-    /// `InstrumentIdentifier`. `Holding.daml:57` maps `registrar` to `admin`
-    /// when it builds the view. Another registry app would use its own
-    /// template name, and this field would still be `admin`.
-    pub admin: String,
-    pub id: String,
-}
-
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DisclosedContract {
     #[serde(rename = "templateId", skip_serializing_if = "Option::is_none")]
@@ -50,8 +37,10 @@ pub struct DisclosedContract {
 
 /// Token Standard V2 wire types for the transfer path.
 ///
-/// V1 stays at module level. `InstrumentId`, `Meta` and `DisclosedContract`
-/// are version-neutral and serve both.
+/// V1 stays at module level. `Meta` and `DisclosedContract` are
+/// version-neutral and serve both, as does `InstrumentId`, which lives in
+/// `crate::instrument` because every part of the standard refers to an
+/// instrument.
 pub mod v2 {
     use serde::{Deserialize, Serialize};
 
@@ -87,7 +76,7 @@ pub mod v2 {
         pub receiver: Account,
         pub amount: crate::decimal::DamlDecimal,
         #[serde(rename = "instrumentId")]
-        pub instrument_id: super::InstrumentId,
+        pub instrument_id: crate::instrument::InstrumentId,
         #[serde(rename = "requestedAt")]
         pub requested_at: String,
         #[serde(rename = "executeBefore")]
@@ -199,37 +188,5 @@ mod tests {
         let json_str = serde_json::to_string(&transfer).unwrap();
         let deserialized: v2::Transfer = serde_json::from_str(&json_str).unwrap();
         assert_eq!(deserialized.amount, DamlDecimal::parse("0.02").unwrap());
-    }
-
-    fn cbtc() -> InstrumentId {
-        InstrumentId {
-            admin: "cbtc-network::1220ab".to_string(),
-            id: "CBTC".to_string(),
-        }
-    }
-
-    #[test]
-    fn two_instruments_with_the_same_fields_are_equal() {
-        assert_eq!(cbtc(), cbtc());
-    }
-
-    #[test]
-    fn a_different_admin_makes_a_different_instrument() {
-        let attacker = InstrumentId {
-            admin: "attacker::1220ff".to_string(),
-            ..cbtc()
-        };
-
-        assert_ne!(cbtc(), attacker);
-    }
-
-    #[test]
-    fn a_different_ticker_makes_a_different_instrument() {
-        let legacy = InstrumentId {
-            id: "CBTCV0RC8".to_string(),
-            ..cbtc()
-        };
-
-        assert_ne!(cbtc(), legacy);
     }
 }

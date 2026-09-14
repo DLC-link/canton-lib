@@ -20,7 +20,7 @@ pub struct AcceptAllParams {
     /// The receiver party ID
     pub receiver_party: String,
     /// The instrument whose pending transfers to accept
-    pub instrument_id: common::transfer::InstrumentId,
+    pub instrument_id: common::instrument::InstrumentId,
     /// Ledger host URL
     pub ledger_host: String,
     /// Registry URL

@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 use crate::decimal::DamlDecimal;
-use crate::transfer::InstrumentId;
+use crate::instrument::InstrumentId;
 
 /// DAML `Splice.Api.Token.MetadataV1.Metadata` — a string-keyed map of
 /// app-specific annotations. Encoded as `{ "values": { .. } }`; an absent or

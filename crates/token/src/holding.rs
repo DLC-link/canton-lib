@@ -1,6 +1,6 @@
 use canton_api_client::models::JsActiveContract;
 use common::decimal::DamlDecimal;
-use common::transfer::InstrumentId;
+use common::instrument::InstrumentId;
 
 /// A token holding contract
 #[derive(Debug, Clone)]

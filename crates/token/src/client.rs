@@ -11,7 +11,7 @@ use crate::{
     utils,
 };
 use common::decimal::DamlDecimal;
-use common::transfer::InstrumentId;
+use common::instrument::InstrumentId;
 use std::collections::HashMap;
 use std::ops::Add;
 

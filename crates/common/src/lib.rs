@@ -6,6 +6,7 @@ pub mod allocation_factory;
 pub mod consts;
 pub mod decimal;
 pub mod filters;
+pub mod instrument;
 pub mod submission;
 pub mod transfer;
 pub mod transfer_factory;

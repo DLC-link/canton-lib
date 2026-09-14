@@ -38,7 +38,7 @@ pub struct WithdrawAllParams {
     /// The sender party ID
     pub sender_party: String,
     /// The instrument whose pending outgoing transfers to withdraw
-    pub instrument_id: common::transfer::InstrumentId,
+    pub instrument_id: common::instrument::InstrumentId,
     /// Ledger host URL
     pub ledger_host: String,
     /// Registry URL

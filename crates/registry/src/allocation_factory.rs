@@ -64,7 +64,7 @@ mod tests {
     };
     use common::allocation_factory::ChoiceArguments;
     use common::decimal::DamlDecimal;
-    use common::transfer::InstrumentId;
+    use common::instrument::InstrumentId;
     use common::transfer_factory::{Context, ExtraArgs, Meta, MetaValue};
     use std::collections::HashMap;
 

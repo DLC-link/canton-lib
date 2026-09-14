@@ -4,7 +4,7 @@ pub struct Params {
     pub party: String,
     pub access_token: String,
     /// The instrument whose holdings to fetch
-    pub instrument_id: common::transfer::InstrumentId,
+    pub instrument_id: common::instrument::InstrumentId,
     /// When `Some`, keep only holdings whose account label matches. `None`
     /// keeps every holding the party owns, which is what every V1 caller
     /// wants and what this function did before Token Standard V2.
@@ -83,7 +83,7 @@ pub async fn get(params: Params) -> Result<Vec<ledger::models::JsActiveContract>
 /// unit test. Keeping the rules here means each one has tests.
 pub(crate) fn wanted(
     ac: &ledger::models::JsActiveContract,
-    instrument: &common::transfer::InstrumentId,
+    instrument: &common::instrument::InstrumentId,
     account: Option<&common::transfer::v2::Account>,
 ) -> bool {
     let Some(views) = ac.created_event.interface_views.clone() else {
@@ -134,8 +134,8 @@ mod label_tests {
         })
     }
 
-    fn instrument() -> common::transfer::InstrumentId {
-        common::transfer::InstrumentId {
+    fn instrument() -> common::instrument::InstrumentId {
+        common::instrument::InstrumentId {
             admin: "admin::1220ef".to_string(),
             id: "CBTC".to_string(),
         }

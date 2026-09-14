@@ -5,7 +5,7 @@ use std::ops::Add;
 pub struct Params {
     pub party: String,
     pub amounts: Vec<common::decimal::DamlDecimal>,
-    pub instrument_id: common::transfer::InstrumentId,
+    pub instrument_id: common::instrument::InstrumentId,
     pub input_holding_cids: Vec<String>,
     pub ledger_host: String,
     pub access_token: String,
@@ -65,7 +65,7 @@ impl From<Error> for String {
 async fn split_once(
     party: String,
     amount: common::decimal::DamlDecimal,
-    instrument_id: common::transfer::InstrumentId,
+    instrument_id: common::instrument::InstrumentId,
     input_holding_cids: Vec<String>,
     ledger_host: String,
     access_token: String,
@@ -289,7 +289,7 @@ pub mod v2 {
     pub struct Params {
         pub account: common::transfer::v2::Account,
         pub amounts: Vec<common::decimal::DamlDecimal>,
-        pub instrument_id: common::transfer::InstrumentId,
+        pub instrument_id: common::instrument::InstrumentId,
         pub input_holding_cids: Vec<String>,
         pub ledger_host: String,
         pub access_token: String,
@@ -304,7 +304,7 @@ pub mod v2 {
     pub(crate) fn self_transfer(
         account: &common::transfer::v2::Account,
         amount: common::decimal::DamlDecimal,
-        instrument_id: common::transfer::InstrumentId,
+        instrument_id: common::instrument::InstrumentId,
         input_holding_cids: Vec<String>,
         reason: &str,
     ) -> common::transfer::v2::Transfer {
@@ -330,7 +330,7 @@ pub mod v2 {
         account: &common::transfer::v2::Account,
         actors: Vec<String>,
         amount: common::decimal::DamlDecimal,
-        instrument_id: common::transfer::InstrumentId,
+        instrument_id: common::instrument::InstrumentId,
         input_holding_cids: Vec<String>,
         ledger_host: &str,
         access_token: &str,
@@ -450,7 +450,7 @@ mod v2_tests {
         v2::Params {
             account,
             amounts: vec![common::decimal::DamlDecimal::parse("1.0").unwrap()],
-            instrument_id: common::transfer::InstrumentId {
+            instrument_id: common::instrument::InstrumentId {
                 admin: "admin::1220ef".to_string(),
                 id: "CBTC".to_string(),
             },
@@ -492,7 +492,7 @@ mod v2_tests {
         let transfer = v2::self_transfer(
             &labelled,
             common::decimal::DamlDecimal::parse("1.0").unwrap(),
-            common::transfer::InstrumentId {
+            common::instrument::InstrumentId {
                 admin: "admin::1220ef".to_string(),
                 id: "CBTC".to_string(),
             },
