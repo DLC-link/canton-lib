@@ -1,0 +1,32 @@
+# release-plz configuration — https://release-plz.dev/docs/config
+#
+# What this does: on every push to main, release-plz opens (or updates) a single
+# "release PR" that bumps the workspace version and writes CHANGELOG.md, based on
+# the Conventional Commit prefixes since the last tag. Merging that PR is what
+# cuts the release. Until then nothing is tagged, and nothing is ever published
+# to crates.io.
+#
+# Why this instead of bumping by hand: the version lives on one line, so two
+# open PRs that both bump it always conflict, and re-bumping after a review
+# dismisses the approval. A PR no longer touches the version at all.
+
+[workspace]
+# canton-lib is consumed as a git dependency, not from crates.io, so there is
+# nothing to publish. This also means no CARGO_REGISTRY_TOKEN is needed.
+publish = false
+
+# Match the tag scheme this repo already uses: v0.6.1, v0.6.0, v0.5.0 …
+# Without this, release-plz would tag per package (e.g. wallet-v0.6.2).
+git_tag_name = "v{{ version }}"
+
+[[package]]
+# canton-proto-rs carries its own upstream version (3.4.0) instead of inheriting
+# version.workspace, so release-plz must leave it alone. Its version tracks the
+# generated Canton protobufs, not this workspace's release cadence.
+name = "canton-proto-rs"
+release = false
+
+[[package]]
+# Not published and not part of the public API surface.
+name = "examples"
+release = false
