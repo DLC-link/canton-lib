@@ -7,24 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.8.0] - 2026-09-11
+## [0.8.0] - 2026-09-14
 
 ### Changed — breaking
 
-- `token::holding::Holding` carries the instrument admin and the account id.
+- `common::transfer::InstrumentId` moves to `common::instrument::InstrumentId`.
+  The type is not specific to transfers. Allocations, splits, holdings and the
+  registry all refer to an instrument, and the Token Standard itself declares
+  `InstrumentId` in `Splice.Api.Token.HoldingV1`. Update the import path; the
+  fields and the JSON encoding do not change. There is no compatibility
+  re-export, because this release already breaks `Holding`.
+- `token::holding::Holding` carries the instrument admin and the account label.
   `instrument_id` changes type from `String`, which held the ticker alone, to
-  `common::transfer::InstrumentId`, which holds the admin and the ticker. The
-  new `account_id` field holds the payload's `label`. A caller comparing
-  `h.instrument_id == "CBTC"` no longer compiles, which is the point: the
-  ticker alone does not identify an instrument, and two registrars can both
-  issue `CBTC`.
-- `common::transfer::InstrumentId` derives `PartialEq` and `Eq`, so a caller
-  compares a whole instrument instead of its two fields separately.
+  `common::instrument::InstrumentId`, which holds the admin and the ticker. A
+  caller comparing `h.instrument_id == "CBTC"` no longer compiles, which is the
+  point: the ticker alone does not identify an instrument, and two registrars
+  can both issue `CBTC`.
+
+  **To migrate, compare the whole instrument, not its `id`.** Write
+  `h.instrument_id == wanted`, where `wanted` is the `InstrumentId` you asked
+  the registry for. Do **not** write `h.instrument_id.id == "CBTC"`: that
+  compiles, and it reintroduces the bug this change exists to remove, because
+  it still admits another registrar's `CBTC`.
+- `token::holding::Holding` gains `account_label`, which holds the payload's
+  `label` verbatim. It is a label, not an account: a V2 account is `owner`,
+  `provider` and `id` together, so comparing `account_label` to an
+  `Account.id` skips the provider check that
+  `token::active_contracts::matches_account` performs.
+- `common::instrument::InstrumentId` derives `PartialEq`, `Eq` and `Hash`, so a
+  caller compares a whole instrument instead of its two fields separately, and
+  can key a map by instrument.
 
 ### Added
 
 - Unit tests for `token::holding::Holding`, which had none. They cover the
-  five parsed fields, the seven error messages and the lock check, including a
+  five parsed fields, the eight error messages and the lock check, including a
   null lock and an empty account label.
 
 ## [0.7.0] - 2026-09-09

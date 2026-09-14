@@ -11,10 +11,14 @@ pub struct Holding {
     /// admin, which is what `Holding.daml:57` writes into the V1 view.
     pub instrument_id: InstrumentId,
     pub owner: String,
-    /// The account id. The Daml template calls this field `label`, and
-    /// `registryAccount` (`TokenApiUtilsV2.daml:57-59`) derives the V2
-    /// account from `owner` and this field, with no provider.
-    pub account_id: String,
+    /// The account label, verbatim from the template's `label` field.
+    ///
+    /// This is not a whole account. A V2 account is `owner`, `provider` and
+    /// `id` together, and `registryAccount` (`TokenApiUtilsV2.daml:57-59`)
+    /// derives one from `owner` and this label, with no provider. Comparing
+    /// this field to an `Account.id` skips the provider check that
+    /// `active_contracts::matches_account` performs.
+    pub account_label: String,
 }
 
 impl Holding {
@@ -67,7 +71,7 @@ impl Holding {
         // An empty label is a real unlabelled account, so only an absent field
         // is an error. Every registry-holding version from 0.0.1 declares
         // `label`, so a required read cannot break an existing holding.
-        let account_id = args
+        let account_label = args
             .get("label")
             .and_then(|v| v.as_str())
             .ok_or("Missing 'label' field")?
@@ -78,7 +82,7 @@ impl Holding {
             amount,
             instrument_id: InstrumentId { admin, id },
             owner,
-            account_id,
+            account_label,
         })
     }
 
@@ -128,7 +132,7 @@ mod tests {
                 "id": "CBTC",
                 "scheme": "RegistrarInternalScheme",
             },
-            "label": "",
+            "label": "treasury",
             "amount": "1.25",
             "lock": null,
         })
@@ -150,7 +154,7 @@ mod tests {
         assert_eq!(holding.amount, DamlDecimal::parse("1.25").unwrap());
         assert_eq!(holding.instrument_id, cbtc());
         assert_eq!(holding.owner, "alice::1220ab");
-        assert_eq!(holding.account_id, "");
+        assert_eq!(holding.account_label, "treasury");
     }
 
     #[test]
@@ -203,17 +207,17 @@ mod tests {
 
         let holding = Holding::from_active_contract(&contract(Some(argument))).unwrap();
 
-        assert_eq!(holding.account_id, "");
+        assert_eq!(holding.account_label, "");
     }
 
     #[test]
-    fn reads_a_non_empty_label_as_the_account_id() {
+    fn reads_a_non_empty_label_as_the_account_label() {
         let mut argument = payload();
-        argument["label"] = json!("treasury");
+        argument["label"] = json!("desk-2");
 
         let holding = Holding::from_active_contract(&contract(Some(argument))).unwrap();
 
-        assert_eq!(holding.account_id, "treasury");
+        assert_eq!(holding.account_label, "desk-2");
     }
 
     #[test]
