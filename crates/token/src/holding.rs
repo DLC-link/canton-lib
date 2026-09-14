@@ -17,15 +17,17 @@ pub struct Holding {
     /// `id` together, and `registryAccount` (`TokenApiUtilsV2.daml:57-59`)
     /// derives one from `owner` and this label, with no provider.
     ///
-    /// For this template the account can never carry a provider. The `ensure`
-    /// clause at `Holding.daml:49` calls `isRegistryAccount`, which checks
-    /// `isNone account.provider` (`TokenApiUtilsV2.daml:116-117`), so the
-    /// ledger rejects such a contract at creation. That has held since
-    /// registry-holding 0.3.0.
+    /// For this template the account can never carry a provider, at any
+    /// version. `holdingV1Metadata` (`Holding.daml:234-241`) builds the
+    /// account with `provider = None` as a literal, so the field is not read
+    /// from the payload at all. The `ensure` clause at `Holding.daml:49`
+    /// checks the same thing through `isRegistryAccount`, but that check
+    /// arrived in 0.3.0 and can never fail on the provider, because the value
+    /// it tests is a constant.
     ///
-    /// Do not confuse that with the payload's own top-level `provider` field.
-    /// That party is an observer (`Holding.daml:42`), not the account's
-    /// provider, which is why the parser ignores it.
+    /// Do not confuse the account's provider with the payload's own top-level
+    /// `provider` field. That party is an observer (`Holding.daml:42`). The
+    /// view ignores it, and so does this parser.
     ///
     /// So `owner` plus this label determines the account here. Comparing this
     /// field to an `Account.id` still skips the provider check that
