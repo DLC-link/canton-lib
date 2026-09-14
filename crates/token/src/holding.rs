@@ -30,7 +30,9 @@ pub struct Holding {
     /// Asset has said it intends to use it in a later iteration. When it does,
     /// a label stops determining an account on its own, and a caller needs a
     /// whole `Account`. This field is named for what it holds so that day
-    /// changes what callers build, not what this field means.
+    /// changes what callers build, not what this field means. Issue #51
+    /// records the three sites that change, and why we cannot build the fix
+    /// before DA ships theirs.
     ///
     /// Do not confuse the account's provider with the payload's own top-level
     /// `provider` field. That party is an observer (`Holding.daml:43`), and it
