@@ -15,9 +15,22 @@ pub struct Holding {
     ///
     /// This is not a whole account. A V2 account is `owner`, `provider` and
     /// `id` together, and `registryAccount` (`TokenApiUtilsV2.daml:57-59`)
-    /// derives one from `owner` and this label, with no provider. Comparing
-    /// this field to an `Account.id` skips the provider check that
-    /// `active_contracts::matches_account` performs.
+    /// derives one from `owner` and this label, with no provider.
+    ///
+    /// For this template the account can never carry a provider. The `ensure`
+    /// clause at `Holding.daml:49` calls `isRegistryAccount`, which checks
+    /// `isNone account.provider` (`TokenApiUtilsV2.daml:116-117`), so the
+    /// ledger rejects such a contract at creation. That has held since
+    /// registry-holding 0.3.0.
+    ///
+    /// Do not confuse that with the payload's own top-level `provider` field.
+    /// That party is an observer (`Holding.daml:42`), not the account's
+    /// provider, which is why the parser ignores it.
+    ///
+    /// So `owner` plus this label determines the account here. Comparing this
+    /// field to an `Account.id` still skips the provider check that
+    /// `active_contracts::matches_account` performs, which matters if a
+    /// caller ever holds an account from another source.
     pub account_label: String,
 }
 
