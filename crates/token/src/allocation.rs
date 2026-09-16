@@ -295,7 +295,7 @@ mod tests {
                 sender: "sender".to_string(),
                 receiver: "receiver".to_string(),
                 amount: common::decimal::DamlDecimal::parse("0.1").unwrap(),
-                instrument_id: common::transfer::InstrumentId {
+                instrument_id: common::instrument::InstrumentId {
                     admin: "admin".to_string(),
                     id: "CBTC".to_string(),
                 },

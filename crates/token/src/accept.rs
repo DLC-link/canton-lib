@@ -20,7 +20,7 @@ pub struct AcceptAllParams {
     /// The receiver party ID
     pub receiver_party: String,
     /// The instrument whose pending transfers to accept
-    pub instrument_id: common::transfer::InstrumentId,
+    pub instrument_id: common::instrument::InstrumentId,
     /// Ledger host URL
     pub ledger_host: String,
     /// Registry URL
@@ -373,8 +373,7 @@ pub async fn accept_all(params: AcceptAllParams) -> Result<AcceptAllResult, Stri
 /// Token Standard V2 forms of the accept entry points.
 ///
 /// `actors` is derived from `receiver_party`: the registry accepts exactly
-/// `[receiver]` on `TransferInstruction_Accept`, checked at
-/// `Splice/TokenStandard/Utils/Internal/Transfers.daml:154`.
+/// `[receiver]` on `TransferInstruction_Accept`.
 pub mod v2 {
     use crate::utils::{build_submission, submit_and_wait};
 

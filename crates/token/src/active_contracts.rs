@@ -4,7 +4,7 @@ pub struct Params {
     pub party: String,
     pub access_token: String,
     /// The instrument whose holdings to fetch
-    pub instrument_id: common::transfer::InstrumentId,
+    pub instrument_id: common::instrument::InstrumentId,
     /// When `Some`, keep only holdings whose account label matches. `None`
     /// keeps every holding the party owns, which is what every V1 caller
     /// wants and what this function did before Token Standard V2.
@@ -16,12 +16,11 @@ const ACCOUNT_ID_META_KEY: &str = "cip-112/account.id";
 
 /// Does this holding sit under `account`?
 ///
-/// A V2 holding carries its account label in the metadata of its V1 interface
-/// view: `accountToMeta` writes `cip-112/account.provider` and
-/// `cip-112/account.id` (`Conversions.daml:187-201`). It writes each key only
-/// when the value is present — a provider of `None`, or an empty id, produces
-/// no key at all. So an absent key means "unlabelled", and a basic account
-/// matches exactly the holdings that carry neither key.
+/// A holding carries its account in the view's metadata, under
+/// `cip-112/account.provider` and `cip-112/account.id`. Each key is written
+/// only when its value is present, so a provider of `None` or an empty id
+/// produces no key. An absent key therefore means "unlabelled", and a basic
+/// account matches exactly the holdings carrying neither key.
 pub(crate) fn matches_account(
     view: &serde_json::Value,
     account: &common::transfer::v2::Account,
@@ -83,7 +82,7 @@ pub async fn get(params: Params) -> Result<Vec<ledger::models::JsActiveContract>
 /// unit test. Keeping the rules here means each one has tests.
 pub(crate) fn wanted(
     ac: &ledger::models::JsActiveContract,
-    instrument: &common::transfer::InstrumentId,
+    instrument: &common::instrument::InstrumentId,
     account: Option<&common::transfer::v2::Account>,
 ) -> bool {
     let Some(views) = ac.created_event.interface_views.clone() else {
@@ -134,8 +133,8 @@ mod label_tests {
         })
     }
 
-    fn instrument() -> common::transfer::InstrumentId {
-        common::transfer::InstrumentId {
+    fn instrument() -> common::instrument::InstrumentId {
+        common::instrument::InstrumentId {
             admin: "admin::1220ef".to_string(),
             id: "CBTC".to_string(),
         }

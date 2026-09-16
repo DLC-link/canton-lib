@@ -20,7 +20,7 @@ pub async fn fetch_incoming_transfers(
     ledger_host: String,
     party: String,
     access_token: String,
-    instrument_id: common::transfer::InstrumentId,
+    instrument_id: common::instrument::InstrumentId,
 ) -> Result<Vec<ledger::models::JsActiveContract>, String> {
     fetch_transfers(
         ledger_host,
@@ -37,7 +37,7 @@ pub async fn fetch_outgoing_transfers(
     ledger_host: String,
     party: String,
     access_token: String,
-    instrument_id: common::transfer::InstrumentId,
+    instrument_id: common::instrument::InstrumentId,
 ) -> Result<Vec<ledger::models::JsActiveContract>, String> {
     fetch_transfers(
         ledger_host,
@@ -82,7 +82,7 @@ async fn fetch_transfers(
     ledger_host: String,
     party: String,
     access_token: String,
-    instrument_id: common::transfer::InstrumentId,
+    instrument_id: common::instrument::InstrumentId,
     direction: TransferDirection,
 ) -> Result<Vec<ledger::models::JsActiveContract>, String> {
     use ledger::ledger_end;
@@ -136,7 +136,7 @@ async fn fetch_transfers(
 /// the same reason `active_contracts::wanted` exists.
 fn wanted_transfer(
     ac: &ledger::models::JsActiveContract,
-    instrument: &common::transfer::InstrumentId,
+    instrument: &common::instrument::InstrumentId,
     party: &str,
     direction: &TransferDirection,
 ) -> bool {
@@ -193,8 +193,8 @@ mod wanted_transfer_tests {
         }
     }
 
-    fn instrument() -> common::transfer::InstrumentId {
-        common::transfer::InstrumentId {
+    fn instrument() -> common::instrument::InstrumentId {
+        common::instrument::InstrumentId {
             admin: "admin::1220ef".to_string(),
             id: "CBTC".to_string(),
         }

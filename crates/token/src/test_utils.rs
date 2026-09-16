@@ -45,7 +45,7 @@
 
 use crate::client::{KeycloakConfig, TokenClient, TokenClientConfig};
 use common::decimal::DamlDecimal;
-use common::transfer::InstrumentId;
+use common::instrument::InstrumentId;
 use ledger::models::JsActiveContract;
 use std::env;
 use std::sync::Mutex;

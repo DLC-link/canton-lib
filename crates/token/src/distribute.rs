@@ -8,7 +8,7 @@ pub struct Recipient {
 pub struct Params {
     pub recipients: Vec<Recipient>,
     pub sender: String,
-    pub instrument_id: common::transfer::InstrumentId,
+    pub instrument_id: common::instrument::InstrumentId,
     pub ledger_host: String,
     pub registry_url: String,
     pub decentralized_party_id: String,
@@ -123,7 +123,7 @@ pub mod v2 {
     pub struct Params {
         pub recipients: Vec<Recipient>,
         pub sender: common::transfer::v2::Account,
-        pub instrument_id: common::transfer::InstrumentId,
+        pub instrument_id: common::instrument::InstrumentId,
         pub ledger_host: String,
         pub registry_url: String,
         pub decentralized_party_id: String,
@@ -221,7 +221,7 @@ mod v2_tests {
                 provider: None,
                 id: String::new(),
             },
-            instrument_id: common::transfer::InstrumentId {
+            instrument_id: common::instrument::InstrumentId {
                 admin: "admin::1220ef".to_string(),
                 id: "CBTC".to_string(),
             },

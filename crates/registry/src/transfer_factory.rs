@@ -148,7 +148,7 @@ mod integration_tests {
                         sender: party_1,
                         receiver: var("PARTY_ID_2"),
                         amount: common::decimal::DamlDecimal::parse("0.02").unwrap(),
-                        instrument_id: common::transfer::InstrumentId {
+                        instrument_id: common::instrument::InstrumentId {
                             admin: decentralized_party_id,
                             id: instrument_id,
                         },
@@ -226,7 +226,7 @@ mod integration_tests {
                         sender: common::transfer::v2::Account::basic(party_1.clone()),
                         receiver: common::transfer::v2::Account::basic(var("PARTY_ID_2")),
                         amount: common::decimal::DamlDecimal::parse("0.02").unwrap(),
-                        instrument_id: common::transfer::InstrumentId {
+                        instrument_id: common::instrument::InstrumentId {
                             admin: decentralized_party_id,
                             id: instrument_id,
                         },

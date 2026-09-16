@@ -23,7 +23,7 @@ pub struct CheckConsolidateParams {
     /// The party ID whose UTXOs to check and consolidate
     pub party: String,
     /// The instrument whose UTXOs to check and consolidate
-    pub instrument_id: common::transfer::InstrumentId,
+    pub instrument_id: common::instrument::InstrumentId,
     /// The threshold number of UTXOs. If the party has >= this many UTXOs, consolidation will be performed.
     /// Canton has a soft requirement of max 10 UTXOs per party per token type.
     pub threshold: usize,
@@ -42,7 +42,7 @@ pub struct GetUtxoCountParams {
     /// The party ID whose UTXOs to count
     pub party: String,
     /// The instrument whose UTXOs to count
-    pub instrument_id: common::transfer::InstrumentId,
+    pub instrument_id: common::instrument::InstrumentId,
     /// Ledger host URL
     pub ledger_host: String,
     /// Access token for the party
@@ -57,7 +57,7 @@ pub struct ConsolidateParams {
     /// The party ID whose UTXOs to consolidate
     pub party: String,
     /// The instrument to consolidate
-    pub instrument_id: common::transfer::InstrumentId,
+    pub instrument_id: common::instrument::InstrumentId,
     /// Optional specific holding CIDs to consolidate. If None, all holdings will be consolidated.
     pub input_holding_cids: Option<Vec<String>>,
     /// Ledger host URL
@@ -78,7 +78,7 @@ pub struct ConsolidateParams {
 ///
 /// let params = consolidate::GetUtxoCountParams {
 ///     party: "party::1220...".to_string(),
-///     instrument_id: common::transfer::InstrumentId {
+///     instrument_id: common::instrument::InstrumentId {
 ///         admin: "token-admin::1220...".to_string(),
 ///         id: "TOKEN".to_string(),
 ///     },
@@ -114,7 +114,7 @@ pub async fn get_utxo_count(params: GetUtxoCountParams) -> Result<usize, String>
 ///
 /// let params = consolidate::ConsolidateParams {
 ///     party: "party::1220...".to_string(),
-///     instrument_id: common::transfer::InstrumentId {
+///     instrument_id: common::instrument::InstrumentId {
 ///         admin: "token-admin::1220...".to_string(),
 ///         id: "TOKEN".to_string(),
 ///     },
@@ -332,7 +332,7 @@ fn parse_consolidate_response(
 ///
 /// let params = consolidate::CheckConsolidateParams {
 ///     party: "party::1220...".to_string(),
-///     instrument_id: common::transfer::InstrumentId {
+///     instrument_id: common::instrument::InstrumentId {
 ///         admin: "token-admin::1220...".to_string(),
 ///         id: "TOKEN".to_string(),
 ///     },
@@ -418,7 +418,7 @@ pub mod v2 {
 
     pub struct ConsolidateParams {
         pub account: common::transfer::v2::Account,
-        pub instrument_id: common::transfer::InstrumentId,
+        pub instrument_id: common::instrument::InstrumentId,
         pub input_holding_cids: Option<Vec<String>>,
         pub ledger_host: String,
         pub access_token: String,
@@ -428,7 +428,7 @@ pub mod v2 {
 
     pub struct CheckConsolidateParams {
         pub account: common::transfer::v2::Account,
-        pub instrument_id: common::transfer::InstrumentId,
+        pub instrument_id: common::instrument::InstrumentId,
         pub threshold: usize,
         pub ledger_host: String,
         pub access_token: String,
@@ -630,7 +630,7 @@ mod v2_tests {
     fn consolidate_params(input_holding_cids: Option<Vec<String>>) -> v2::ConsolidateParams {
         v2::ConsolidateParams {
             account: common::transfer::v2::Account::basic("alice::1220ab"),
-            instrument_id: common::transfer::InstrumentId {
+            instrument_id: common::instrument::InstrumentId {
                 admin: "admin::1220ef".to_string(),
                 id: "CBTC".to_string(),
             },
@@ -646,7 +646,7 @@ mod v2_tests {
     async fn v2_consolidate_rejects_a_special_account_before_any_request() {
         let err = v2::consolidate_utxos(v2::ConsolidateParams {
             account: special_account(),
-            instrument_id: common::transfer::InstrumentId {
+            instrument_id: common::instrument::InstrumentId {
                 admin: "admin::1220ef".to_string(),
                 id: "CBTC".to_string(),
             },
@@ -669,7 +669,7 @@ mod v2_tests {
     async fn v2_check_and_consolidate_rejects_a_special_account_before_any_request() {
         let err = v2::check_and_consolidate(v2::CheckConsolidateParams {
             account: special_account(),
-            instrument_id: common::transfer::InstrumentId {
+            instrument_id: common::instrument::InstrumentId {
                 admin: "admin::1220ef".to_string(),
                 id: "CBTC".to_string(),
             },

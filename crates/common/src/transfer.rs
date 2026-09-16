@@ -1,3 +1,4 @@
+use crate::instrument::InstrumentId;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -23,12 +24,6 @@ pub struct Meta {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct InstrumentId {
-    pub admin: String,
-    pub id: String,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DisclosedContract {
     #[serde(rename = "templateId", skip_serializing_if = "Option::is_none")]
     pub template_id: Option<String>,
@@ -42,12 +37,14 @@ pub struct DisclosedContract {
 
 /// Token Standard V2 wire types for the transfer path.
 ///
-/// V1 stays at module level. `InstrumentId`, `Meta` and `DisclosedContract`
-/// are version-neutral and serve both.
+/// V1 stays at module level. `Meta` and `DisclosedContract` are
+/// version-neutral and serve both, as does `InstrumentId`, which lives in
+/// `crate::instrument` because every part of the standard refers to an
+/// instrument.
 pub mod v2 {
     use serde::{Deserialize, Serialize};
 
-    /// An on-chain managed account, per `Splice.Api.Token.HoldingV2.Account`.
+    /// An on-chain managed account.
     ///
     /// `owner` is `None` only for the special accounts an instrument admin
     /// manages, such as the source account for a mint. `id` defaults to the
@@ -79,7 +76,7 @@ pub mod v2 {
         pub receiver: Account,
         pub amount: crate::decimal::DamlDecimal,
         #[serde(rename = "instrumentId")]
-        pub instrument_id: super::InstrumentId,
+        pub instrument_id: crate::instrument::InstrumentId,
         #[serde(rename = "requestedAt")]
         pub requested_at: String,
         #[serde(rename = "executeBefore")]

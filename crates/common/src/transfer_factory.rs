@@ -127,7 +127,7 @@ mod tests {
                 sender: "sender1".to_string(),
                 receiver: "receiver1".to_string(),
                 amount: DamlDecimal::parse("100.0").unwrap(),
-                instrument_id: transfer::InstrumentId {
+                instrument_id: crate::instrument::InstrumentId {
                     admin: "admin1".to_string(),
                     id: "CBTC".to_string(),
                 },

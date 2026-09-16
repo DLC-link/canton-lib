@@ -47,7 +47,7 @@ mod tests {
     use super::*;
     use crate::allocation::{Metadata, Reference, SettlementInfo, TransferLeg};
     use crate::decimal::DamlDecimal;
-    use crate::transfer::InstrumentId;
+    use crate::instrument::InstrumentId;
     use crate::transfer_factory::{Context, Meta, MetaValue};
     use std::collections::HashMap;
 

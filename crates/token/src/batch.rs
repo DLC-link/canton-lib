@@ -34,7 +34,7 @@ struct CsvRecord {
 pub struct Params {
     pub csv_path: String,
     pub sender: String,
-    pub instrument_id: common::transfer::InstrumentId,
+    pub instrument_id: common::instrument::InstrumentId,
     pub ledger_host: String,
     pub registry_url: String,
     pub decentralized_party_id: String,
@@ -124,7 +124,7 @@ pub mod v2 {
     pub struct Params {
         pub csv_path: String,
         pub sender: common::transfer::v2::Account,
-        pub instrument_id: common::transfer::InstrumentId,
+        pub instrument_id: common::instrument::InstrumentId,
         pub ledger_host: String,
         pub registry_url: String,
         pub decentralized_party_id: String,
