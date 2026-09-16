@@ -7,26 +7,14 @@ use common::instrument::InstrumentId;
 pub struct Holding {
     pub contract_id: String,
     pub amount: DamlDecimal,
-    /// The instrument, admin included. The payload's `registrar` is the
-    /// admin, which is what the template's V1 interface view writes as
-    /// `instrumentId.admin`.
+    /// The instrument, admin included. The payload's `registrar` is the admin.
     pub instrument_id: InstrumentId,
     pub owner: String,
-    /// The account label, verbatim from the template's `label` field.
+    /// The account label, read from the payload's `label`.
     ///
-    /// This is not a whole account. A V2 account is `owner`, `provider` and
-    /// `id` together. Comparing this field to an `Account.id` skips the
-    /// provider check that `active_contracts::matches_account` performs.
-    ///
-    /// The registry populates no provider today, so `owner` plus this label
-    /// determines the account. That is a fact about the registry, not about
-    /// the standard, and it is expected to change. Issue #51 carries the
-    /// evidence, the three call sites that change, and why the fix cannot be
-    /// built before Digital Asset ships theirs.
-    ///
-    /// Do not read the payload's own top-level `provider` as the account's
-    /// provider. That party is an observer on the template, and the interface
-    /// view ignores it.
+    /// A label is not a whole account, which is `owner`, `provider` and `id`.
+    /// Comparing this to an `Account.id` skips the provider check that
+    /// `active_contracts::matches_account` performs.
     pub account_label: String,
 }
 
@@ -60,11 +48,8 @@ impl Holding {
             .ok_or("Missing 'instrument.id' field")?
             .to_string();
 
-        // The template's `registrar` is the instrument admin: its V1 interface
-        // view writes it as `instrumentId.admin`. The payload's
-        // `instrument.source` holds the same party, and the template's `ensure`
-        // clause forces the two to agree, so reading either is correct. Read
-        // `registrar`, because that is the field the view reads.
+        // `registrar` and `instrument.source` hold the same party. Read
+        // `registrar`.
         let admin = args
             .get("registrar")
             .and_then(|v| v.as_str())
@@ -77,10 +62,8 @@ impl Holding {
             .ok_or("Missing 'owner' field")?
             .to_string();
 
-        // An empty label is a real unlabelled account, so only an absent field
-        // is an error. Every registry-holding version from 0.0.1 to 0.3.2
-        // declares `label` as a required `Text`, so a required read cannot
-        // break an existing holding.
+        // An empty label is a real unlabelled account, so only an absent
+        // field is an error.
         let account_label = args
             .get("label")
             .and_then(|v| v.as_str())
@@ -115,8 +98,7 @@ mod tests {
     use canton_api_client::models::CreatedEvent;
     use serde_json::json;
 
-    /// An active contract carrying a concrete utility-registry Holding
-    /// payload. `Holding` reads `createArgument`, not an interface view.
+    /// An active contract carrying a holding payload in `createArgument`.
     fn contract(argument: Option<serde_json::Value>) -> JsActiveContract {
         JsActiveContract {
             created_event: Box::new(CreatedEvent {
@@ -128,8 +110,7 @@ mod tests {
         }
     }
 
-    /// The eight fields `Utility.Registry.Holding.V0.Holding` declares. Every
-    /// registry-holding version from 0.0.1 to 0.3.2 declares the same set.
+    /// The eight fields a holding payload carries.
     fn payload() -> serde_json::Value {
         json!({
             "operator": "operator::1220aa",
@@ -182,11 +163,8 @@ mod tests {
         );
     }
 
-    /// The admin comes from the top-level `registrar`, never from
-    /// `instrument.source`. The template's `ensure` clause forces the two to
-    /// agree, so this fixture is impossible on the ledger. That is the point:
-    /// giving them different values is the only way to prove which one the
-    /// parser reads.
+    /// The two fields always agree on a real payload, so disagreeing them is
+    /// the only way to prove which one the parser reads.
     #[test]
     fn the_admin_comes_from_registrar_not_from_instrument_source() {
         let mut argument = payload();
