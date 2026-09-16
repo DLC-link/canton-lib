@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 /// Which instrument a holding, transfer or allocation refers to.
 ///
-/// This type mirrors `Splice.Api.Token.HoldingV1.InstrumentId`. The Token
+/// This type mirrors `InstrumentId` in `Splice.Api.Token.HoldingV1`. The Token
 /// Standard declares it in its Holding module, not its transfer module,
 /// because every part of the standard refers to an instrument.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
@@ -10,15 +10,15 @@ pub struct InstrumentId {
     /// The party that administers the instrument.
     ///
     /// The utility registry calls the same party `registrar` in its `Holding`
-    /// template, and `source` in `InstrumentIdentifier`. `Holding.daml:57`
-    /// maps `registrar` to `admin` when it builds the view. Another registry
-    /// app would use its own template name, and this field would still be
-    /// `admin`.
+    /// template, and `source` in `InstrumentIdentifier`. That template's V1
+    /// interface view maps `registrar` onto this field. Another registry app
+    /// would use its own template name, and this field would still be `admin`.
     pub admin: String,
     /// The identifier the admin uses for the instrument, such as `CBTC`.
     ///
-    /// This is unique per admin, not globally: `HoldingV1.daml:16-19` says it
-    /// "MUST be unique and unambiguous per instrument admin". So `id` alone
+    /// This is unique per admin, not globally. The standard's own comment on
+    /// the field says it "MUST be unique and unambiguous per instrument
+    /// admin", in `Splice.Api.Token.HoldingV1`. So `id` alone
     /// does not name an instrument, and `admin` is what makes the pair unique.
     /// Compare a whole `InstrumentId`; comparing this field alone admits
     /// another registrar's token of the same name.

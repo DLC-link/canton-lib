@@ -8,41 +8,25 @@ pub struct Holding {
     pub contract_id: String,
     pub amount: DamlDecimal,
     /// The instrument, admin included. The payload's `registrar` is the
-    /// admin, which is what `Holding.daml:57` writes into the V1 view.
+    /// admin, which is what the template's V1 interface view writes as
+    /// `instrumentId.admin`.
     pub instrument_id: InstrumentId,
     pub owner: String,
     /// The account label, verbatim from the template's `label` field.
     ///
     /// This is not a whole account. A V2 account is `owner`, `provider` and
-    /// `id` together, and `registryAccount` (`TokenApiUtilsV2.daml:57-59`)
-    /// derives one from `owner` and this label, with no provider.
+    /// `id` together. Comparing this field to an `Account.id` skips the
+    /// provider check that `active_contracts::matches_account` performs.
     ///
-    /// Through registry-holding 0.3.2 the account carries no provider, so
-    /// `owner` plus this label determines it. `holdingV1Metadata` builds the
-    /// account with `provider = None` as a literal (`Holding.daml:247`), so
-    /// the field is not read from the payload at all. The `ensure` clause at
-    /// `Holding.daml:50` tests the same property through `isRegistryAccount`
-    /// and `isNone account.provider` (`TokenApiUtilsV2.daml:116`), which
-    /// cannot fail while the value it tests is a constant.
+    /// The registry populates no provider today, so `owner` plus this label
+    /// determines the account. That is a fact about the registry, not about
+    /// the standard, and it is expected to change. Issue #51 carries the
+    /// evidence, the three call sites that change, and why the fix cannot be
+    /// built before Digital Asset ships theirs.
     ///
-    /// **That is a fact about today's registry, not a property of the
-    /// standard.** The Token Standard's `Account` has a provider, and Digital
-    /// Asset has said it intends to use it in a later iteration. When it does,
-    /// a label stops determining an account on its own, and a caller needs a
-    /// whole `Account`. This field is named for what it holds so that day
-    /// changes what callers build, not what this field means. Issue #51
-    /// records the three sites that change, and why we cannot build the fix
-    /// before DA ships theirs.
-    ///
-    /// Do not confuse the account's provider with the payload's own top-level
-    /// `provider` field. That party is an observer (`Holding.daml:43`), and it
-    /// is not the account's provider even now. The view ignores it, and so
-    /// does this parser.
-    ///
-    /// So `owner` plus this label determines the account here. Comparing this
-    /// field to an `Account.id` still skips the provider check that
-    /// `active_contracts::matches_account` performs, which matters if a
-    /// caller ever holds an account from another source.
+    /// Do not read the payload's own top-level `provider` as the account's
+    /// provider. That party is an observer on the template, and the interface
+    /// view ignores it.
     pub account_label: String,
 }
 
@@ -76,8 +60,8 @@ impl Holding {
             .ok_or("Missing 'instrument.id' field")?
             .to_string();
 
-        // The template's `registrar` is the instrument admin: `Holding.daml:57`
-        // writes it into the V1 view as `instrumentId.admin`. The payload's
+        // The template's `registrar` is the instrument admin: its V1 interface
+        // view writes it as `instrumentId.admin`. The payload's
         // `instrument.source` holds the same party, and the template's `ensure`
         // clause forces the two to agree, so reading either is correct. Read
         // `registrar`, because that is the field the view reads.
@@ -145,8 +129,7 @@ mod tests {
     }
 
     /// The eight fields `Utility.Registry.Holding.V0.Holding` declares. Every
-    /// registry-holding version from 0.0.1 to 0.3.1 declares the same set, and
-    /// all 519,386 active mainnet holdings carried all eight on 11 Sep 2026.
+    /// registry-holding version from 0.0.1 to 0.3.2 declares the same set.
     fn payload() -> serde_json::Value {
         json!({
             "operator": "operator::1220aa",
