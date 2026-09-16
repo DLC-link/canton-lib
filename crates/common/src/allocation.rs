@@ -4,31 +4,28 @@ use std::collections::HashMap;
 use crate::decimal::DamlDecimal;
 use crate::instrument::InstrumentId;
 
-/// DAML `Splice.Api.Token.MetadataV1.Metadata` — a string-keyed map of
-/// app-specific annotations. Encoded as `{ "values": { .. } }`; an absent or
-/// empty map serializes as `{ "values": {} }`, which is the DAML JSON encoding
-/// of an empty `TextMap`.
+/// A string-keyed map of app-specific annotations. Encoded as
+/// `{ "values": { .. } }`; an absent or empty map serializes as
+/// `{ "values": {} }`.
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct Metadata {
     pub values: HashMap<String, String>,
 }
 
-/// DAML `Splice.Api.Token.AllocationV1.Reference` — an app-specific identifier
-/// for the settlement that an allocation belongs to.
+/// An app-specific identifier for the settlement that an allocation belongs
+/// to.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Reference {
     /// The key identifying the data. May be the empty string when `cid` alone
     /// is sufficient.
     pub id: String,
-    /// Optional contract id used to refer to a contract. DAML `AnyContractId`
-    /// is `ContractId AnyContract`, so it is encoded as a plain contract-id
-    /// string.
+    /// Optional contract id used to refer to a contract. Encoded as a plain
+    /// contract-id string.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cid: Option<String>,
 }
 
-/// DAML `Splice.Api.Token.AllocationV1.SettlementInfo` — the timing and
-/// authority shared by every leg of a single settlement.
+/// The timing and authority shared by every leg of a single settlement.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SettlementInfo {
     /// The party responsible for executing the settlement (the venue).
@@ -46,8 +43,8 @@ pub struct SettlementInfo {
     pub meta: Metadata,
 }
 
-/// DAML `Splice.Api.Token.AllocationV1.TransferLeg` — a single directed
-/// transfer of one instrument from a sender to a receiver.
+/// A single directed transfer of one instrument from a sender to a
+/// receiver.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TransferLeg {
     pub sender: String,
@@ -58,8 +55,8 @@ pub struct TransferLeg {
     pub meta: Metadata,
 }
 
-/// DAML `Splice.Api.Token.AllocationV1.AllocationSpecification` — what should
-/// be allocated: the shared settlement plus this leg's id and details.
+/// What should be allocated: the shared settlement plus this leg's id and
+/// details.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct AllocationSpecification {
     pub settlement: SettlementInfo,

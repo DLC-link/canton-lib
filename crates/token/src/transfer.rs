@@ -627,8 +627,7 @@ fn generate_unique_reference(reference_base: &str, sender: &str, receiver: &str)
 ///
 /// `TransferResult` and `SequentialChainedResult` are version-neutral and
 /// shared with V1. `actors` is derived, never passed in: the registry accepts
-/// exactly `[sender.owner]` on the factory choice, checked at
-/// `AllocationFactory.daml:774`.
+/// exactly `[sender.owner]` on the factory choice.
 pub mod v2 {
     use super::{
         Recorder, SequentialChainedResult, TokenState, TransferResult, TransferResultCallback,

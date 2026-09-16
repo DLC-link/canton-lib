@@ -44,7 +44,7 @@ pub struct DisclosedContract {
 pub mod v2 {
     use serde::{Deserialize, Serialize};
 
-    /// An on-chain managed account, per `Splice.Api.Token.HoldingV2.Account`.
+    /// An on-chain managed account.
     ///
     /// `owner` is `None` only for the special accounts an instrument admin
     /// manages, such as the source account for a mint. `id` defaults to the

@@ -300,7 +300,7 @@ pub mod v2 {
     /// A self-transfer, which the registry reads as a merge-split.
     ///
     /// The same `Account` value goes on both sides: the registry compares the
-    /// accounts whole to detect a merge-split (`Transfers.daml:219`).
+    /// accounts whole to detect a merge-split.
     pub(crate) fn self_transfer(
         account: &common::transfer::v2::Account,
         amount: common::decimal::DamlDecimal,

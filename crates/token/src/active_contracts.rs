@@ -16,12 +16,11 @@ const ACCOUNT_ID_META_KEY: &str = "cip-112/account.id";
 
 /// Does this holding sit under `account`?
 ///
-/// A V2 holding carries its account label in the metadata of its V1 interface
-/// view: `accountToMeta` writes `cip-112/account.provider` and
-/// `cip-112/account.id` (`Conversions.daml:187-201`). It writes each key only
-/// when the value is present — a provider of `None`, or an empty id, produces
-/// no key at all. So an absent key means "unlabelled", and a basic account
-/// matches exactly the holdings that carry neither key.
+/// A holding carries its account in the view's metadata, under
+/// `cip-112/account.provider` and `cip-112/account.id`. Each key is written
+/// only when its value is present, so a provider of `None` or an empty id
+/// produces no key. An absent key therefore means "unlabelled", and a basic
+/// account matches exactly the holdings carrying neither key.
 pub(crate) fn matches_account(
     view: &serde_json::Value,
     account: &common::transfer::v2::Account,

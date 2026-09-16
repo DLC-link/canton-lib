@@ -373,8 +373,7 @@ pub async fn accept_all(params: AcceptAllParams) -> Result<AcceptAllResult, Stri
 /// Token Standard V2 forms of the accept entry points.
 ///
 /// `actors` is derived from `receiver_party`: the registry accepts exactly
-/// `[receiver]` on `TransferInstruction_Accept`, checked at
-/// `Splice/TokenStandard/Utils/Internal/Transfers.daml:154`.
+/// `[receiver]` on `TransferInstruction_Accept`.
 pub mod v2 {
     use crate::utils::{build_submission, submit_and_wait};
 
