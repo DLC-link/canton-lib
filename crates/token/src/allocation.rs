@@ -46,7 +46,11 @@ pub struct ActionParams {
 ///
 /// Returns an error string if holding selection, the registry request, or the
 /// ledger submission fails.
-pub async fn allocate(params: Params) -> Result<(), String> {
+///
+/// The returned [`AllocationResult`] carries the allocation's contract id.
+/// Keep it: `withdraw`, `cancel` and `execute_transfer` all need it, and this
+/// crate offers no way to look it up afterwards.
+pub async fn allocate(params: Params) -> Result<AllocationResult, String> {
     // Auto-select the sender's holdings when none were provided.
     let mut input_holding_cids = params.input_holding_cids;
     if input_holding_cids.is_empty() {
@@ -101,14 +105,69 @@ pub async fn allocate(params: Params) -> Result<(), String> {
         ..Default::default()
     };
 
-    ledger::submit::wait_for_transaction(ledger::submit::Params {
+    let response = ledger::submit::wait_for_transaction(ledger::submit::Params {
         ledger_host: params.ledger_host,
         access_token: params.access_token,
         request: submission_request,
     })
     .await?;
 
-    Ok(())
+    parse_allocate_response(&response)
+}
+
+/// What an `AllocationFactory_Allocate` created.
+///
+/// The allocation id is the only handle on the locked holdings.
+/// `withdraw`, `cancel` and `execute_transfer` all take it, and nothing else
+/// in this crate can find it afterwards.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AllocationResult {
+    /// The allocation to act on later.
+    pub allocation_cid: String,
+    /// The holdings left over after the allocated amount was locked.
+    pub sender_change_cids: Vec<String>,
+}
+
+/// Pull the allocation id and the sender's change out of the response.
+///
+/// The registry answers `AllocationInstructionResult_Completed` with an
+/// `allocationCid`. A different tag means the registry did something this
+/// function does not model, so the error quotes the tag rather than
+/// reporting a missing field: a reader should learn what happened, not what
+/// was absent.
+fn parse_allocate_response(response_raw: &str) -> Result<AllocationResult, String> {
+    let response: ledger::models::JsSubmitAndWaitForTransactionResponse =
+        serde_json::from_str(response_raw)
+            .map_err(|e| format!("Failed to parse response JSON: {}", e))?;
+
+    for event in &response.transaction.events {
+        if let Some(exercised) = crate::event_helpers::as_exercised_event(event)
+            && exercised.choice == "AllocationFactory_Allocate"
+            && let Some(Some(result)) = exercised.exercise_result.as_ref()
+        {
+            let output = &result["output"];
+            let Some(allocation_cid) = output["value"]["allocationCid"].as_str() else {
+                let tag = output["tag"].as_str().unwrap_or("no tag");
+                return Err(format!(
+                    "AllocationFactory_Allocate answered {tag}, which carries no allocationCid"
+                ));
+            };
+
+            return Ok(AllocationResult {
+                allocation_cid: allocation_cid.to_string(),
+                sender_change_cids: result["senderChangeCids"]
+                    .as_array()
+                    .map(|cids| {
+                        cids.iter()
+                            .filter_map(|v| v.as_str().map(str::to_string))
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+            });
+        }
+    }
+
+    Err("Failed to find an AllocationFactory_Allocate result in the response".to_string())
 }
 
 /// Execute the transfer of an allocated leg (`Allocation_ExecuteTransfer`).
@@ -302,6 +361,67 @@ mod tests {
                 meta: common::allocation::Metadata::default(),
             },
         }
+    }
+
+    /// The registry's answer carries the allocation id, and `allocate` hands
+    /// it back.
+    ///
+    /// The payload is the shape a devnet submission returned on 28 September
+    /// 2026, with the contract ids shortened.
+    #[test]
+    fn a_completed_allocation_yields_its_contract_id() {
+        let response = crate::utils::test_fixtures::transaction_response(
+            "1220alloc",
+            serde_json::json!([crate::utils::test_fixtures::exercised_event_value(
+                "pkg:Utility.Registry.App.V0.Service.AllocationFactory:AllocationFactory",
+                "AllocationFactory_Allocate",
+                serde_json::json!({
+                    "output": {
+                        "tag": "AllocationInstructionResult_Completed",
+                        "value": { "allocationCid": "00451c70" }
+                    },
+                    "senderChangeCids": ["00fbfa88"]
+                }),
+            )]),
+        );
+
+        let raw = serde_json::to_string(&response).expect("fixture must serialize");
+        let result = parse_allocate_response(&raw).expect("a completed allocation must parse");
+
+        assert_eq!(
+            result,
+            AllocationResult {
+                allocation_cid: "00451c70".to_string(),
+                sender_change_cids: vec!["00fbfa88".to_string()],
+            }
+        );
+    }
+
+    /// An answer this function does not model names what the registry said.
+    ///
+    /// Reporting a missing field would send a reader looking for the field.
+    /// The tag says what actually happened.
+    #[test]
+    fn an_unmodelled_result_names_the_tag() {
+        let response = crate::utils::test_fixtures::transaction_response(
+            "1220alloc",
+            serde_json::json!([crate::utils::test_fixtures::exercised_event_value(
+                "pkg:Utility.Registry.App.V0.Service.AllocationFactory:AllocationFactory",
+                "AllocationFactory_Allocate",
+                serde_json::json!({
+                    "output": { "tag": "AllocationInstructionResult_Pending", "value": {} },
+                    "senderChangeCids": []
+                }),
+            )]),
+        );
+
+        let raw = serde_json::to_string(&response).expect("fixture must serialize");
+        let err = parse_allocate_response(&raw).unwrap_err();
+
+        assert!(
+            err.contains("AllocationInstructionResult_Pending"),
+            "the error must quote the tag: {err}"
+        );
     }
 
     #[test]

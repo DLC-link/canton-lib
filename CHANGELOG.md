@@ -22,6 +22,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   payload is not a consumer's tool, and leaving it public would price every
   later change to it as a breaking one. `TransferResult` is unchanged, and it
   is how a caller reads the result of a transfer.
+- `allocation::allocate` returns an `AllocationResult` in place of `()`. It
+  created a contract and reported nothing about it, while `withdraw`, `cancel`
+  and `execute_transfer` all take that contract's id and nothing in the crate
+  could look it up. A caller could lock holdings and then not name what to
+  unlock. The result carries the allocation id and the sender's change ids,
+  both of which the registry's answer already held and this function discarded.
 - `batch::submit_from_csv` and `batch::v2::submit_from_csv` return the
   `SequentialChainedResult` they already computed, in place of `()`. Both
   logged the per-transfer outcomes and then discarded them, so a caller read
