@@ -39,7 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   change: it was already `Option<String>`. A caller that needs to tell the two
   apart reads that field.
 
-## [0.8.0] - 2026-09-14
+## [0.8.0] - 2026-09-16
 
 ### Changed — breaking
 
