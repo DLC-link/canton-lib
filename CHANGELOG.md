@@ -17,11 +17,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   while the ledger had already moved the value. A caller that retried on
   that error moved the value a second time. Measured on devnet on
   28 September 2026.
-- `parse_transfer_response` returns `TransferOutcome` in place of the transfer
-  offer id. `TransferOutcome::Pending` carries the instruction id and
-  `TransferOutcome::Completed` carries the receiver holding ids, so a caller
-  must handle both. `TransferResult.transfer_offer_cid` is `None` after a
-  completed transfer, and its type does not change.
+- `parse_transfer_response` is crate-private. It was `pub` and had no caller
+  outside its own file, here or in `cbtc-lib`. A parser for one choice's Daml
+  payload is not a consumer's tool, and leaving it public would price every
+  later change to it as a breaking one. `TransferResult` is unchanged, and it
+  is how a caller reads the result of a transfer.
+- `TransferResult.transfer_offer_cid` is `None` after a transfer that settles
+  on submission, and `Some` after one that creates an offer. Its type does not
+  change: it was already `Option<String>`. A caller that needs to tell the two
+  apart reads that field.
 
 ## [0.8.0] - 2026-09-14
 

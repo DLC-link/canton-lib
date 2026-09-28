@@ -578,7 +578,7 @@ pub async fn submit_sequential_chained(
 /// the holdings. A caller has to tell them apart: after `Completed` there is
 /// no offer to wait on, and no second step to take.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TransferOutcome {
+pub(crate) enum TransferOutcome {
     /// The registry created a `TransferInstruction`. The receiver accepts it,
     /// or it expires at `executeBefore`.
     Pending { transfer_instruction_cid: String },
@@ -589,7 +589,12 @@ pub enum TransferOutcome {
 }
 
 /// Parse the transfer response to extract sender change CIDs, the outcome, and update_id
-pub fn parse_transfer_response(
+///
+/// Crate-private. It was `pub` and had no caller outside this file, in this
+/// workspace or in `cbtc-lib`. A parser for one choice's Daml payload is not
+/// something a consumer should reach for, and keeping it public would price
+/// every later change to it as a breaking one.
+pub(crate) fn parse_transfer_response(
     response_raw: &str,
 ) -> Result<(Vec<String>, TransferOutcome, String), String> {
     let response: JsSubmitAndWaitForTransactionResponse = serde_json::from_str(response_raw)
