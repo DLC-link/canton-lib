@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — breaking
+
+- A transfer that settles on submission is no longer reported as a failure.
+  `TransferFactory_Transfer` answers one of two ways. It creates an offer the
+  receiver must accept, or it settles outright and creates the holdings. The
+  parser required `transferInstructionCid` in both cases, so the second
+  answer failed with `Failed to find transferInstructionCid in response`
+  while the ledger had already moved the value. A caller that retried on
+  that error moved the value a second time. Measured on devnet on
+  28 September 2026.
+- `parse_transfer_response` returns `TransferOutcome` in place of the transfer
+  offer id. `TransferOutcome::Pending` carries the instruction id and
+  `TransferOutcome::Completed` carries the receiver holding ids, so a caller
+  must handle both. `TransferResult.transfer_offer_cid` is `None` after a
+  completed transfer, and its type does not change.
+
 ## [0.8.0] - 2026-09-14
 
 ### Changed — breaking

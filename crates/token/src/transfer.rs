@@ -472,20 +472,38 @@ pub async fn submit_sequential_chained(
             Ok(response_raw) => {
                 // Parse response to extract change UTXOs, transfer offer CID, and update_id
                 match parse_transfer_response(&response_raw) {
-                    Ok((sender_change_cids, transfer_offer_cid, update_id)) => {
-                        log::debug!(
-                            "Transfer successful | Transfer Offer: {} | Update ID: {} | Change UTXOs: {} remaining",
-                            transfer_offer_cid,
-                            update_id,
-                            sender_change_cids.len()
-                        );
+                    Ok((sender_change_cids, outcome, update_id)) => {
+                        let transfer_offer_cid = match &outcome {
+                            TransferOutcome::Pending {
+                                transfer_instruction_cid,
+                            } => Some(transfer_instruction_cid.clone()),
+                            TransferOutcome::Completed { .. } => None,
+                        };
+                        match &outcome {
+                            TransferOutcome::Pending {
+                                transfer_instruction_cid,
+                            } => log::debug!(
+                                "Transfer successful | Transfer Offer: {} | Update ID: {} | Change UTXOs: {} remaining",
+                                transfer_instruction_cid,
+                                update_id,
+                                sender_change_cids.len()
+                            ),
+                            TransferOutcome::Completed {
+                                receiver_holding_cids,
+                            } => log::debug!(
+                                "Transfer settled on submission | Receiver holdings: {} | Update ID: {} | Change UTXOs: {} remaining",
+                                receiver_holding_cids.len(),
+                                update_id,
+                                sender_change_cids.len()
+                            ),
+                        }
 
                         let result = TransferResult {
                             success: true,
                             transfer_index: idx,
                             receiver: recipient.receiver.clone(),
                             amount: recipient.amount.to_string(),
-                            transfer_offer_cid: Some(transfer_offer_cid),
+                            transfer_offer_cid,
                             update_id: Some(update_id),
                             reference: transfer_reference.clone(),
                             raw_response: Some(response_raw.clone()),
@@ -553,10 +571,27 @@ pub async fn submit_sequential_chained(
     Ok(recorder.finish())
 }
 
-/// Parse the transfer response to extract sender change CIDs, transfer offer CID, and update_id
+/// What the registry did with a transfer.
+///
+/// `TransferFactory_Transfer` answers one of two ways. It creates an offer
+/// the receiver must accept, or it settles the transfer outright and creates
+/// the holdings. A caller has to tell them apart: after `Completed` there is
+/// no offer to wait on, and no second step to take.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TransferOutcome {
+    /// The registry created a `TransferInstruction`. The receiver accepts it,
+    /// or it expires at `executeBefore`.
+    Pending { transfer_instruction_cid: String },
+    /// The transfer settled on submission, and these holdings now exist. The
+    /// registry answers this way when no acceptance is needed, as it does for
+    /// a self transfer or a receiver that pre-approved the sender.
+    Completed { receiver_holding_cids: Vec<String> },
+}
+
+/// Parse the transfer response to extract sender change CIDs, the outcome, and update_id
 pub fn parse_transfer_response(
     response_raw: &str,
-) -> Result<(Vec<String>, String, String), String> {
+) -> Result<(Vec<String>, TransferOutcome, String), String> {
     let response: JsSubmitAndWaitForTransactionResponse = serde_json::from_str(response_raw)
         .map_err(|e| format!("Failed to parse response JSON: {}", e))?;
 
@@ -566,14 +601,17 @@ pub fn parse_transfer_response(
 /// Inner helper that operates on an already-deserialized typed response.
 ///
 /// Walks `transaction.events`, finds the `ExercisedEvent` whose `choice`
-/// is `TransferFactory_Transfer`, and pulls `senderChangeCids` plus
-/// `output.value.transferInstructionCid` out of its `exercise_result`
-/// (which remains a `serde_json::Value` because the Daml-encoded payload
-/// shape isn't part of the Ledger API schema).
-/// Also extracts `transaction.update_id`.
+/// is `TransferFactory_Transfer`, and pulls `senderChangeCids` plus the
+/// outcome out of its `exercise_result` (which remains a `serde_json::Value`
+/// because the Daml-encoded payload shape isn't part of the Ledger API
+/// schema). Also extracts `transaction.update_id`.
+///
+/// The outcome is read from the payload's shape rather than its `tag`. A
+/// `transferInstructionCid` means pending and `receiverHoldingCids` means
+/// completed, which keeps a response that omits the tag readable.
 fn parse_transfer_response_value(
     response: &JsSubmitAndWaitForTransactionResponse,
-) -> Result<(Vec<String>, String, String), String> {
+) -> Result<(Vec<String>, TransferOutcome, String), String> {
     let update_id = response.transaction.update_id.clone();
     if update_id.is_empty() {
         return Err("Failed to find updateId in response".to_string());
@@ -583,7 +621,7 @@ fn parse_transfer_response_value(
 
     // Find the ExercisedEvent with TransferFactory_Transfer choice
     let mut sender_change_cids = None;
-    let mut transfer_offer_cid = None;
+    let mut outcome = None;
 
     for event in events {
         if let Some(exercised) = crate::event_helpers::as_exercised_event(event)
@@ -600,19 +638,29 @@ fn parse_transfer_response_value(
                 );
             }
 
-            // Extract transfer offer CID from the output (Daml-encoded payload)
-            if let Some(output) = result["output"]["value"]["transferInstructionCid"].as_str() {
-                transfer_offer_cid = Some(output.to_string());
+            // Extract the outcome from the output (Daml-encoded payload)
+            let value = &result["output"]["value"];
+            if let Some(cid) = value["transferInstructionCid"].as_str() {
+                outcome = Some(TransferOutcome::Pending {
+                    transfer_instruction_cid: cid.to_string(),
+                });
+            } else if let Some(cids) = value["receiverHoldingCids"].as_array() {
+                outcome = Some(TransferOutcome::Completed {
+                    receiver_holding_cids: cids
+                        .iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect(),
+                });
             }
         }
     }
 
     let sender_change_cids =
         sender_change_cids.ok_or("Failed to find senderChangeCids in response")?;
-    let transfer_offer_cid =
-        transfer_offer_cid.ok_or("Failed to find transferInstructionCid in response")?;
+    let outcome = outcome
+        .ok_or("Failed to find transferInstructionCid or receiverHoldingCids in response")?;
 
-    Ok((sender_change_cids, transfer_offer_cid, update_id))
+    Ok((sender_change_cids, outcome, update_id))
 }
 
 /// Generate a unique reference by concatenating reference_base + sender + receiver and base64 encoding
@@ -978,19 +1026,37 @@ pub mod v2 {
 
             match submit_and_wait(&params.ledger_host, &current_token, submission).await {
                 Ok(response_raw) => match super::parse_transfer_response(&response_raw) {
-                    Ok((sender_change_cids, transfer_offer_cid, update_id)) => {
-                        log::debug!(
-                            "Transfer successful | Transfer Offer: {} | Update ID: {} | Change UTXOs: {} remaining",
-                            transfer_offer_cid,
-                            update_id,
-                            sender_change_cids.len()
-                        );
+                    Ok((sender_change_cids, outcome, update_id)) => {
+                        let transfer_offer_cid = match &outcome {
+                            super::TransferOutcome::Pending {
+                                transfer_instruction_cid,
+                            } => Some(transfer_instruction_cid.clone()),
+                            super::TransferOutcome::Completed { .. } => None,
+                        };
+                        match &outcome {
+                            super::TransferOutcome::Pending {
+                                transfer_instruction_cid,
+                            } => log::debug!(
+                                "Transfer successful | Transfer Offer: {} | Update ID: {} | Change UTXOs: {} remaining",
+                                transfer_instruction_cid,
+                                update_id,
+                                sender_change_cids.len()
+                            ),
+                            super::TransferOutcome::Completed {
+                                receiver_holding_cids,
+                            } => log::debug!(
+                                "Transfer settled on submission | Receiver holdings: {} | Update ID: {} | Change UTXOs: {} remaining",
+                                receiver_holding_cids.len(),
+                                update_id,
+                                sender_change_cids.len()
+                            ),
+                        }
                         let result = TransferResult {
                             success: true,
                             transfer_index: idx,
                             receiver: receiver.clone(),
                             amount: recipient.amount.to_string(),
-                            transfer_offer_cid: Some(transfer_offer_cid),
+                            transfer_offer_cid,
                             update_id: Some(update_id),
                             reference: transfer_reference.clone(),
                             raw_response: Some(response_raw.clone()),
@@ -1087,10 +1153,15 @@ mod parser_tests {
     #[test]
     fn happy_path_extracts_all_fields() {
         let response = happy_response();
-        let (change_cids, offer_cid, update_id) = parse_transfer_response_value(&response).unwrap();
+        let (change_cids, outcome, update_id) = parse_transfer_response_value(&response).unwrap();
 
         assert_eq!(change_cids, vec!["00change-cid-1", "00change-cid-2"]);
-        assert_eq!(offer_cid, "00transfer-instruction-cid");
+        assert_eq!(
+            outcome,
+            TransferOutcome::Pending {
+                transfer_instruction_cid: "00transfer-instruction-cid".to_string()
+            }
+        );
         assert_eq!(update_id, "1220abcdef1234567890");
     }
 
@@ -1116,6 +1187,47 @@ mod parser_tests {
 
         let (_, _, update_id) = parse_transfer_response_value(&response).unwrap();
         assert_eq!(update_id, "tx-update-xyz");
+    }
+
+    /// A transfer that settles on submission parses.
+    ///
+    /// The registry answers `TransferInstructionResult_Completed` when it
+    /// creates no offer, and that result carries `receiverHoldingCids`
+    /// instead of a `transferInstructionCid`. The holdings exist and the
+    /// input is archived, so a caller must not read this as a failure.
+    ///
+    /// The payload below is the shape a devnet submission returned on
+    /// 28 September 2026, with the contract ids shortened.
+    #[test]
+    fn a_completed_transfer_parses() {
+        let response = transaction_response(
+            "1220e6459a06d4",
+            json!([exercised_event_value(
+                "pkg:Splice.Api.Token.TransferInstructionV1:TransferFactory",
+                "TransferFactory_Transfer",
+                json!({
+                    "senderChangeCids": ["00d5bc1e"],
+                    "output": {
+                        "tag": "TransferInstructionResult_Completed",
+                        "value": {
+                            "receiverHoldingCids": ["00de9ddf"]
+                        }
+                    }
+                }),
+            )]),
+        );
+
+        let (change_cids, outcome, update_id) =
+            parse_transfer_response_value(&response).expect("a completed transfer must parse");
+
+        assert_eq!(change_cids, vec!["00d5bc1e"]);
+        assert_eq!(
+            outcome,
+            TransferOutcome::Completed {
+                receiver_holding_cids: vec!["00de9ddf".to_string()]
+            }
+        );
+        assert_eq!(update_id, "1220e6459a06d4");
     }
 
     #[test]
