@@ -22,6 +22,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   payload is not a consumer's tool, and leaving it public would price every
   later change to it as a breaking one. `TransferResult` is unchanged, and it
   is how a caller reads the result of a transfer.
+- `batch::submit_from_csv` and `batch::v2::submit_from_csv` return the
+  `SequentialChainedResult` they already computed, in place of `()`. Both
+  logged the per-transfer outcomes and then discarded them, so a caller read
+  `Ok` when every transfer in the batch had failed. `Ok` still means the batch
+  ran rather than that every transfer succeeded, and a caller reads
+  `failed_count` to tell those apart.
 - `TransferResult.transfer_offer_cid` is `None` after a transfer that settles
   on submission, and `Some` after one that creates an offer. Its type does not
   change: it was already `Option<String>`. A caller that needs to tell the two
