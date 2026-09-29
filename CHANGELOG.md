@@ -26,8 +26,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   created a contract and reported nothing about it, while `withdraw`, `cancel`
   and `execute_transfer` all take that contract's id and nothing in the crate
   could look it up. A caller could lock holdings and then not name what to
-  unlock. The result carries the allocation id and the sender's change ids,
-  both of which the registry's answer already held and this function discarded.
+  unlock. The result carries an `AllocationOutcome` and the sender's change
+  ids, both of which the registry's answer already held and this function
+  discarded.
+- `allocation::allocate` no longer reads a pending allocation as a failure.
+  `AllocationFactory_Allocate` answers one of two ways, exactly as
+  `TransferFactory_Transfer` does. It creates the allocation and names it with
+  an `allocationCid`, or it creates an `AllocationInstruction` and names that
+  with an `allocationInstructionCid`. The parser required `allocationCid` in
+  both cases, so the second answer failed after the ledger had locked the
+  holdings, and a caller could neither withdraw them nor learn what to
+  withdraw. `AllocationOutcome` models both, and
+  `splice-api-token-allocation-instruction-v1-1.0.0.dar` defines both
+  constructors. GitHub Copilot found this on the review of #58.
 - `batch::submit_from_csv` and `batch::v2::submit_from_csv` return the
   `SequentialChainedResult` they already computed, in place of `()`. Both
   logged the per-transfer outcomes and then discarded them, so a caller read

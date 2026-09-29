@@ -47,9 +47,12 @@ pub struct ActionParams {
 /// Returns an error string if holding selection, the registry request, or the
 /// ledger submission fails.
 ///
-/// The returned [`AllocationResult`] carries the allocation's contract id.
-/// Keep it: `withdraw`, `cancel` and `execute_transfer` all need it, and this
-/// crate offers no way to look it up afterwards.
+/// The returned [`AllocationResult`] names the contract the registry created.
+/// Read its [`AllocationOutcome`]: a `Completed` answer carries the allocation
+/// id that `withdraw`, `cancel` and `execute_transfer` need, and a `Pending`
+/// answer carries an instruction id instead, which none of them accepts. Keep
+/// whichever id came back, because this crate offers no way to look it up
+/// afterwards.
 pub async fn allocate(params: Params) -> Result<AllocationResult, String> {
     // Auto-select the sender's holdings when none were provided.
     let mut input_holding_cids = params.input_holding_cids;
@@ -115,26 +118,44 @@ pub async fn allocate(params: Params) -> Result<AllocationResult, String> {
     parse_allocate_response(&response)
 }
 
+/// What the registry did with an allocation request.
+///
+/// `AllocationFactory_Allocate` answers one of two ways. It creates the
+/// allocation outright, or it creates an `AllocationInstruction` that needs
+/// a further step. A caller has to tell them apart, because `withdraw`,
+/// `cancel` and `execute_transfer` take an allocation id and none of them
+/// accepts an instruction id.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AllocationOutcome {
+    /// The registry created an `AllocationInstruction`. The allocation does
+    /// not exist yet, and this id is the handle on the instruction.
+    Pending { allocation_instruction_cid: String },
+    /// The registry created the allocation, and this id is the handle on the
+    /// locked holdings.
+    Completed { allocation_cid: String },
+}
+
 /// What an `AllocationFactory_Allocate` created.
 ///
-/// The allocation id is the only handle on the locked holdings.
-/// `withdraw`, `cancel` and `execute_transfer` all take it, and nothing else
-/// in this crate can find it afterwards.
+/// The ids here are the only handles on what the call made. Nothing else in
+/// this crate can find them afterwards.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AllocationResult {
-    /// The allocation to act on later.
-    pub allocation_cid: String,
+    /// Which contract the registry created, and its id.
+    pub outcome: AllocationOutcome,
     /// The holdings left over after the allocated amount was locked.
     pub sender_change_cids: Vec<String>,
 }
 
-/// Pull the allocation id and the sender's change out of the response.
+/// Pull the outcome and the sender's change out of the response.
 ///
-/// The registry answers `AllocationInstructionResult_Completed` with an
-/// `allocationCid`. A different tag means the registry did something this
-/// function does not model, so the error quotes the tag rather than
-/// reporting a missing field: a reader should learn what happened, not what
-/// was absent.
+/// The outcome is read from the payload's shape rather than its `tag`, as
+/// `transfer` reads its own. An `allocationCid` means the registry created
+/// the allocation, and an `allocationInstructionCid` means it created an
+/// instruction instead. A payload with neither, such as
+/// `AllocationInstructionResult_Failed`, is an error, and the error quotes
+/// the tag rather than reporting a missing field: a reader should learn what
+/// happened, not what was absent.
 fn parse_allocate_response(response_raw: &str) -> Result<AllocationResult, String> {
     let response: ledger::models::JsSubmitAndWaitForTransactionResponse =
         serde_json::from_str(response_raw)
@@ -146,15 +167,24 @@ fn parse_allocate_response(response_raw: &str) -> Result<AllocationResult, Strin
             && let Some(Some(result)) = exercised.exercise_result.as_ref()
         {
             let output = &result["output"];
-            let Some(allocation_cid) = output["value"]["allocationCid"].as_str() else {
+            let value = &output["value"];
+            let outcome = if let Some(cid) = value["allocationCid"].as_str() {
+                AllocationOutcome::Completed {
+                    allocation_cid: cid.to_string(),
+                }
+            } else if let Some(cid) = value["allocationInstructionCid"].as_str() {
+                AllocationOutcome::Pending {
+                    allocation_instruction_cid: cid.to_string(),
+                }
+            } else {
                 let tag = output["tag"].as_str().unwrap_or("no tag");
                 return Err(format!(
-                    "AllocationFactory_Allocate answered {tag}, which carries no allocationCid"
+                    "AllocationFactory_Allocate answered {tag}, which names no contract it created"
                 ));
             };
 
             return Ok(AllocationResult {
-                allocation_cid: allocation_cid.to_string(),
+                outcome,
                 sender_change_cids: result["senderChangeCids"]
                     .as_array()
                     .map(|cids| {
@@ -391,25 +421,67 @@ mod tests {
         assert_eq!(
             result,
             AllocationResult {
-                allocation_cid: "00451c70".to_string(),
+                outcome: AllocationOutcome::Completed {
+                    allocation_cid: "00451c70".to_string(),
+                },
                 sender_change_cids: vec!["00fbfa88".to_string()],
             }
         );
     }
 
-    /// An answer this function does not model names what the registry said.
+    /// A pending allocation is a success, and it carries an instruction id.
     ///
-    /// Reporting a missing field would send a reader looking for the field.
-    /// The tag says what actually happened.
+    /// `AllocationFactory_Allocate` answers `AllocationInstructionResult_Pending`
+    /// when the registry creates an `AllocationInstruction` rather than the
+    /// allocation itself. The bundled
+    /// `splice-api-token-allocation-instruction-v1-1.0.0.dar` defines that
+    /// constructor with an `allocationInstructionCid`. Reading it as a failure
+    /// would tell a caller nothing was created, after the ledger created it.
     #[test]
-    fn an_unmodelled_result_names_the_tag() {
+    fn a_pending_allocation_is_not_an_error() {
         let response = crate::utils::test_fixtures::transaction_response(
             "1220alloc",
             serde_json::json!([crate::utils::test_fixtures::exercised_event_value(
                 "pkg:Utility.Registry.App.V0.Service.AllocationFactory:AllocationFactory",
                 "AllocationFactory_Allocate",
                 serde_json::json!({
-                    "output": { "tag": "AllocationInstructionResult_Pending", "value": {} },
+                    "output": {
+                        "tag": "AllocationInstructionResult_Pending",
+                        "value": { "allocationInstructionCid": "00aa11bb" }
+                    },
+                    "senderChangeCids": ["00fbfa88"]
+                }),
+            )]),
+        );
+
+        let raw = serde_json::to_string(&response).expect("fixture must serialize");
+        let result = parse_allocate_response(&raw).expect("a pending allocation must parse");
+
+        assert_eq!(
+            result,
+            AllocationResult {
+                outcome: AllocationOutcome::Pending {
+                    allocation_instruction_cid: "00aa11bb".to_string(),
+                },
+                sender_change_cids: vec!["00fbfa88".to_string()],
+            }
+        );
+    }
+
+    /// An answer that names no contract says what the registry did instead.
+    ///
+    /// `AllocationInstructionResult_Failed` creates nothing, so there is no
+    /// id to hand back. Reporting a missing field would send a reader looking
+    /// for the field. The tag says what actually happened.
+    #[test]
+    fn a_result_naming_no_contract_quotes_the_tag() {
+        let response = crate::utils::test_fixtures::transaction_response(
+            "1220alloc",
+            serde_json::json!([crate::utils::test_fixtures::exercised_event_value(
+                "pkg:Utility.Registry.App.V0.Service.AllocationFactory:AllocationFactory",
+                "AllocationFactory_Allocate",
+                serde_json::json!({
+                    "output": { "tag": "AllocationInstructionResult_Failed", "value": {} },
                     "senderChangeCids": []
                 }),
             )]),
@@ -419,7 +491,7 @@ mod tests {
         let err = parse_allocate_response(&raw).unwrap_err();
 
         assert!(
-            err.contains("AllocationInstructionResult_Pending"),
+            err.contains("AllocationInstructionResult_Failed"),
             "the error must quote the tag: {err}"
         );
     }
