@@ -200,7 +200,7 @@ impl TokenState {
     }
 }
 
-pub async fn submit(mut params: Params) -> Result<TransferSubmission, String> {
+pub async fn submit(mut params: Params) -> Result<TransferReceipt, String> {
     if params.transfer.input_holding_cids.is_none() {
         let contracts = active_contracts::get(active_contracts::Params {
             ledger_host: params.ledger_host.clone(),
@@ -278,7 +278,7 @@ pub async fn submit(mut params: Params) -> Result<TransferSubmission, String> {
     .await?;
 
     let (sender_change_cids, outcome, update_id) = parse_transfer_response(&response_raw)?;
-    Ok(TransferSubmission {
+    Ok(TransferReceipt {
         outcome,
         sender_change_cids,
         update_id,
@@ -558,12 +558,16 @@ pub async fn submit_sequential_chained(
     Ok(recorder.finish())
 }
 
-/// What the registry did with a transfer.
+/// What `TransferFactory_Transfer` created.
 ///
-/// `TransferFactory_Transfer` answers one of two ways. It creates an offer
-/// the receiver must accept, or it settles the transfer outright and creates
-/// the holdings. A caller has to tell them apart: after `Completed` there is
-/// no offer to wait on, and no second step to take.
+/// The choice answers in one of three ways, and this enum holds the two that
+/// create a contract: an offer the receiver must accept, or the holdings
+/// themselves. A caller has to tell them apart, because after `Completed`
+/// there is no offer to wait on and no second step to take.
+///
+/// The third answer, `TransferInstructionResult_Failed`, creates nothing: the
+/// registry refused the transfer. It is an `Err` rather than a variant here,
+/// so a caller cannot read it as a transfer that happened.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TransferOutcome {
     /// The registry created a `TransferInstruction`. The receiver accepts it,
@@ -575,18 +579,20 @@ pub enum TransferOutcome {
     Completed { receiver_holding_cids: Vec<String> },
 }
 
-/// What one `TransferFactory_Transfer` submission created.
+/// What one `TransferFactory_Transfer` did on the ledger.
 ///
-/// [`submit`] and [`v2::submit`] return it. `submit_sequential_chained`
-/// computes the same three values per row and reports them through
-/// [`TransferResult`] instead.
+/// Every field comes from the committed transaction, not from an
+/// acknowledgement: the submission waits for the transaction, and a contract
+/// id exists only once it commits. [`submit`] and [`v2::submit`] return it,
+/// and `submit_sequential_chained` reports the same three values per row
+/// through [`TransferResult`].
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TransferSubmission {
+pub struct TransferReceipt {
     /// What the registry did, and the contract it named.
     pub outcome: TransferOutcome,
     /// The holdings left over after the transferred amount was taken.
     pub sender_change_cids: Vec<String>,
-    /// The ledger update this submission produced.
+    /// The ledger update the transaction produced.
     pub update_id: String,
 }
 
@@ -691,6 +697,9 @@ fn parse_transfer_response_value(
     // Find the ExercisedEvent with TransferFactory_Transfer choice
     let mut sender_change_cids = None;
     let mut outcome = None;
+    // Kept for the error below, which says what the registry answered rather
+    // than which field was absent.
+    let mut output_tag = "no tag".to_string();
 
     for event in events {
         if let Some(exercised) = crate::event_helpers::as_exercised_event(event)
@@ -708,6 +717,9 @@ fn parse_transfer_response_value(
             }
 
             // Extract the outcome from the output (Daml-encoded payload)
+            if let Some(tag) = result["output"]["tag"].as_str() {
+                output_tag = tag.to_string();
+            }
             let value = &result["output"]["value"];
             if let Some(cid) = value["transferInstructionCid"].as_str() {
                 outcome = Some(TransferOutcome::Pending {
@@ -735,8 +747,11 @@ fn parse_transfer_response_value(
 
     let sender_change_cids =
         sender_change_cids.ok_or("Failed to find senderChangeCids in response")?;
-    let outcome = outcome
-        .ok_or("Failed to find transferInstructionCid or receiverHoldingCids in response")?;
+    let outcome = outcome.ok_or_else(|| {
+        format!(
+            "TransferFactory_Transfer answered {output_tag}, which names no contract it created"
+        )
+    })?;
 
     Ok((sender_change_cids, outcome, update_id))
 }
@@ -866,7 +881,7 @@ pub mod v2 {
         .await
     }
 
-    pub async fn submit(mut params: Params) -> Result<super::TransferSubmission, String> {
+    pub async fn submit(mut params: Params) -> Result<super::TransferReceipt, String> {
         let sender = require_owner(&params.transfer.sender, "transfer.sender")?;
         // The receiver is guarded too, so this entry point agrees with
         // `submit_sequential_chained`, which guards every recipient. Without
@@ -922,7 +937,7 @@ pub mod v2 {
 
         let (sender_change_cids, outcome, update_id) =
             super::parse_transfer_response(&response_raw)?;
-        Ok(super::TransferSubmission {
+        Ok(super::TransferReceipt {
             outcome,
             sender_change_cids,
             update_id,
@@ -1437,12 +1452,14 @@ mod parser_tests {
         )
     }
 
-    /// An answer naming neither contract is an error that says so.
+    /// An answer naming no contract quotes the tag, which says what the
+    /// registry did rather than which field was absent.
     ///
-    /// The parser reads the payload's shape, so a result carrying neither
-    /// `transferInstructionCid` nor `receiverHoldingCids` reaches this branch.
+    /// `TransferInstructionResult_Failed` means the registry refused the
+    /// transfer. Reporting a missing field would send a reader looking for
+    /// the field.
     #[test]
-    fn a_result_naming_neither_contract_fails() {
+    fn a_result_naming_neither_contract_quotes_the_tag() {
         let response = transaction_response(
             "1220upd",
             serde_json::json!([exercised_event_value(
@@ -1460,7 +1477,8 @@ mod parser_tests {
 
         assert_eq!(
             err,
-            "Failed to find transferInstructionCid or receiverHoldingCids in response"
+            "TransferFactory_Transfer answered TransferInstructionResult_Failed, \
+             which names no contract it created"
         );
     }
 

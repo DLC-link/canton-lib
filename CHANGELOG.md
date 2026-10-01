@@ -52,18 +52,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   batch reported `No UTXOs available for transfer`. A row that moves the whole
   balance leaves no change at all, so the next row had nothing. Both the V1 and
   the V2 loop now chain the receiver's holdings when the two parties match.
+- A refused transfer names what the registry said. `TransferFactory_Transfer`
+  answers one of three ways, and the third,
+  `TransferInstructionResult_Failed`, creates nothing. The error read
+  `Failed to find transferInstructionCid or receiverHoldingCids in response`,
+  which describes a parser that lost a field rather than a registry that
+  refused. It now quotes the tag, as the allocation parser does. `Failed` is
+  an error rather than a `TransferOutcome` variant, so a caller cannot read a
+  refused transfer as one that happened.
 - The parsers reject a malformed id array rather than dropping its bad
   entries. `receiverHoldingCids` with a non-string entry was read as a success
   holding fewer ids than the registry created. `senderChangeCids` on an
   allocation defaulted to an empty list when the field was missing, which a
   caller cannot tell from an allocation that left no change. An empty array
   stays a valid answer.
-- `transfer::submit` and `transfer::v2::submit` return a `TransferSubmission`
+- `transfer::submit` and `transfer::v2::submit` return a `TransferReceipt`
   in place of `()`. A single transfer created a contract and named nothing,
-  while the chained form reported the same three values per row. The result
-  carries the outcome, the sender's change ids and the update id.
+  while the chained form reported the same three values per row. The receipt
+  carries the outcome, the sender's change ids and the update id, all read
+  from the committed transaction rather than from an acknowledgement.
   `TransferOutcome` is public for the same reason, and `client::send` returns
-  it too.
+  the receipt rather than dropping it.
 - `TransferResult.transfer_offer_cid` is `None` after a transfer that settles
   on submission, and `Some` after one that creates an offer. Its type does not
   change: it was already `Option<String>`. A caller that needs to tell the two
