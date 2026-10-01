@@ -57,7 +57,13 @@ pub struct Params {
 ///
 /// Each transfer uses the change from the previous transfer, eliminating the
 /// need for pre-splitting UTXOs.
-pub async fn submit_from_csv(params: Params) -> Result<(), String> {
+///
+/// The returned result carries every transfer's outcome and the two counts.
+/// `Ok` means the batch ran, not that every transfer in it succeeded: read
+/// `failed_count` before treating the batch as done.
+pub async fn submit_from_csv(
+    params: Params,
+) -> Result<crate::transfer::SequentialChainedResult, String> {
     // Read CSV file
     log::debug!("Reading CSV from: {}", params.csv_path);
     let mut reader = csv::Reader::from_path(&params.csv_path)
@@ -110,7 +116,7 @@ pub async fn submit_from_csv(params: Params) -> Result<(), String> {
 
     log_batch_result(&result);
 
-    Ok(())
+    Ok(result)
 }
 
 /// Token Standard V2 form of the CSV batch entry point.
@@ -170,8 +176,11 @@ pub mod v2 {
         Ok(recipients)
     }
 
-    /// Distribute to every recipient in a CSV file.
-    pub async fn submit_from_csv(params: Params) -> Result<(), String> {
+    /// Distribute to every recipient in a CSV file. The result reads as
+    /// [`super::submit_from_csv`]'s does.
+    pub async fn submit_from_csv(
+        params: Params,
+    ) -> Result<crate::transfer::SequentialChainedResult, String> {
         log::debug!("Reading CSV from: {}", params.csv_path);
         let file = std::fs::File::open(&params.csv_path)
             .map_err(|e| format!("Failed to read CSV file: {}", e))?;
@@ -195,7 +204,7 @@ pub mod v2 {
 
         super::log_batch_result(&result);
 
-        Ok(())
+        Ok(result)
     }
 }
 

@@ -7,6 +7,77 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-01
+
+### Fixed — breaking
+
+- A transfer that settles on submission is no longer reported as a failure.
+  `TransferFactory_Transfer` answers one of two ways. It creates an offer the
+  receiver must accept, or it settles outright and creates the holdings. The
+  parser required `transferInstructionCid` in both cases, so the second
+  answer failed with `Failed to find transferInstructionCid in response`
+  while the ledger had already moved the value. A caller that retried on
+  that error moved the value a second time. Measured on devnet on
+  28 September 2026.
+- `parse_transfer_response` is crate-private. It was `pub` and had no caller
+  outside its own file, here or in `cbtc-lib`. A parser for one choice's Daml
+  payload is not a consumer's tool, and leaving it public would price every
+  later change to it as a breaking one. `TransferResult` is unchanged, and it
+  is how a caller reads the result of a transfer.
+- `allocation::allocate` returns an `AllocationResult` in place of `()`. It
+  created a contract and reported nothing about it, while `withdraw`, `cancel`
+  and `execute_transfer` all take that contract's id and nothing in the crate
+  could look it up. A caller could lock holdings and then not name what to
+  unlock. The result carries an `AllocationOutcome` and the sender's change
+  ids, both of which the registry's answer already held and this function
+  discarded.
+
+  `AllocationOutcome` names both answers `AllocationFactory_Allocate` gives,
+  exactly as `TransferOutcome` does for transfers. The registry creates the
+  allocation and names it with an `allocationCid`, or it creates an
+  `AllocationInstruction` and names that with an `allocationInstructionCid`.
+  `splice-api-token-allocation-instruction-v1-1.0.0.dar` defines both
+  constructors, and a caller that reads only one of them cannot act on what
+  the ledger created.
+- `batch::submit_from_csv` and `batch::v2::submit_from_csv` return the
+  `SequentialChainedResult` they already computed, in place of `()`. Both
+  logged the per-transfer outcomes and then discarded them, so a caller read
+  `Ok` when every transfer in the batch had failed. `Ok` still means the batch
+  ran rather than that every transfer succeeded, and a caller reads
+  `failed_count` to tell those apart.
+- A chained batch keeps the holdings a settled self transfer creates. When the
+  receiver is the sender, `TransferFactory_Transfer` creates holdings the
+  sender still owns, and the loop fed only the sender's change to the next row.
+  The change list then ran out while the value was still spendable, and the
+  batch reported `No UTXOs available for transfer`. A row that moves the whole
+  balance leaves no change at all, so the next row had nothing. Both the V1 and
+  the V2 loop now chain the receiver's holdings when the two parties match.
+- A refused transfer names what the registry said. `TransferFactory_Transfer`
+  answers one of three ways, and the third,
+  `TransferInstructionResult_Failed`, creates nothing. The error read
+  `Failed to find transferInstructionCid or receiverHoldingCids in response`,
+  which describes a parser that lost a field rather than a registry that
+  refused. It now quotes the tag, as the allocation parser does. `Failed` is
+  an error rather than a `TransferOutcome` variant, so a caller cannot read a
+  refused transfer as one that happened.
+- The parsers reject a malformed id array rather than dropping its bad
+  entries. `receiverHoldingCids` with a non-string entry was read as a success
+  holding fewer ids than the registry created. `senderChangeCids` on an
+  allocation defaulted to an empty list when the field was missing, which a
+  caller cannot tell from an allocation that left no change. An empty array
+  stays a valid answer.
+- `transfer::submit` and `transfer::v2::submit` return a `TransferReceipt`
+  in place of `()`. A single transfer created a contract and named nothing,
+  while the chained form reported the same three values per row. The receipt
+  carries the outcome, the sender's change ids and the update id, all read
+  from the committed transaction rather than from an acknowledgement.
+  `TransferOutcome` is public for the same reason, and `client::send` returns
+  the receipt rather than dropping it.
+- `TransferResult.transfer_offer_cid` is `None` after a transfer that settles
+  on submission, and `Some` after one that creates an offer. Its type does not
+  change: it was already `Option<String>`. A caller that needs to tell the two
+  apart reads that field.
+
 ## [0.8.0] - 2026-09-16
 
 ### Changed — breaking
