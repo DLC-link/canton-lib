@@ -48,11 +48,7 @@ pub struct ActionParams {
 /// ledger submission fails.
 ///
 /// The returned [`AllocationResult`] names the contract the registry created.
-/// Read its [`AllocationOutcome`]: a `Completed` answer carries the allocation
-/// id that `withdraw`, `cancel` and `execute_transfer` need, and a `Pending`
-/// answer carries an instruction id instead, which none of them accepts. Keep
-/// whichever id came back, because this crate offers no way to look it up
-/// afterwards.
+/// Keep that id: nothing in this crate can look it up afterwards.
 pub async fn allocate(params: Params) -> Result<AllocationResult, String> {
     // Auto-select the sender's holdings when none were provided.
     let mut input_holding_cids = params.input_holding_cids;
@@ -120,25 +116,18 @@ pub async fn allocate(params: Params) -> Result<AllocationResult, String> {
 
 /// What the registry did with an allocation request.
 ///
-/// `AllocationFactory_Allocate` answers one of two ways. It creates the
-/// allocation outright, or it creates an `AllocationInstruction` that needs
-/// a further step. A caller has to tell them apart, because `withdraw`,
-/// `cancel` and `execute_transfer` take an allocation id and none of them
-/// accepts an instruction id.
+/// `withdraw`, `cancel` and `execute_transfer` take an allocation id, and
+/// none of them accepts an instruction id, so a caller must tell the two
+/// apart.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AllocationOutcome {
-    /// The registry created an `AllocationInstruction`. The allocation does
-    /// not exist yet, and this id is the handle on the instruction.
+    /// An `AllocationInstruction` exists and the allocation does not yet.
     Pending { allocation_instruction_cid: String },
-    /// The registry created the allocation, and this id is the handle on the
-    /// locked holdings.
+    /// The allocation exists, holding the locked amount.
     Completed { allocation_cid: String },
 }
 
 /// What an `AllocationFactory_Allocate` created.
-///
-/// The ids here are the only handles on what the call made. Nothing else in
-/// this crate can find them afterwards.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AllocationResult {
     /// Which contract the registry created, and its id.
@@ -151,10 +140,9 @@ pub struct AllocationResult {
 ///
 /// The outcome is read from the payload's shape rather than its `tag`, as
 /// `transfer` reads its own. An `allocationCid` means the registry created
-/// the allocation, and an `allocationInstructionCid` means it created an
-/// instruction instead. A payload with neither, such as
-/// `AllocationInstructionResult_Failed`, is an error, and the error quotes
-/// the tag rather than reporting a missing field: a reader should learn what
+/// the allocation; an `allocationInstructionCid` means it created an
+/// instruction instead. `AllocationInstructionResult_Failed` names neither,
+/// so it is an error that quotes the tag: a reader should learn what
 /// happened, not what was absent.
 fn parse_allocate_response(response_raw: &str) -> Result<AllocationResult, String> {
     let response: ledger::models::JsSubmitAndWaitForTransactionResponse =
@@ -440,14 +428,8 @@ mod tests {
         );
     }
 
-    /// A pending allocation is a success, and it carries an instruction id.
-    ///
-    /// `AllocationFactory_Allocate` answers `AllocationInstructionResult_Pending`
-    /// when the registry creates an `AllocationInstruction` rather than the
-    /// allocation itself. The bundled
-    /// `splice-api-token-allocation-instruction-v1-1.0.0.dar` defines that
-    /// constructor with an `allocationInstructionCid`. Reading it as a failure
-    /// would tell a caller nothing was created, after the ledger created it.
+    /// A pending allocation parses: the ledger created an instruction, and
+    /// reading that as a failure would say nothing was created.
     #[test]
     fn a_pending_allocation_is_not_an_error() {
         let response = crate::utils::test_fixtures::transaction_response(
@@ -479,11 +461,8 @@ mod tests {
         );
     }
 
-    /// A missing `senderChangeCids` is an error, not an empty change list.
-    ///
-    /// An empty list is a legitimate answer, so returning one for a missing
-    /// field tells the caller the allocation left no change when the parser
-    /// simply lost the handles. The transfer parser rejects the same field.
+    /// A missing `senderChangeCids` is an error, because an empty list is
+    /// itself a legitimate answer.
     #[test]
     fn a_result_without_sender_change_cids_fails() {
         let response = crate::utils::test_fixtures::transaction_response(
@@ -536,8 +515,7 @@ mod tests {
         );
     }
 
-    /// An empty change list stays a success: the allocation used the whole
-    /// holding, so there is nothing left over.
+    /// An empty change list stays a success.
     #[test]
     fn an_empty_sender_change_list_parses() {
         let response = crate::utils::test_fixtures::transaction_response(
@@ -561,11 +539,8 @@ mod tests {
         assert!(result.sender_change_cids.is_empty());
     }
 
-    /// An answer that names no contract says what the registry did instead.
-    ///
-    /// `AllocationInstructionResult_Failed` creates nothing, so there is no
-    /// id to hand back. Reporting a missing field would send a reader looking
-    /// for the field. The tag says what actually happened.
+    /// An answer naming no contract quotes the tag, which says what
+    /// happened rather than what was absent.
     #[test]
     fn a_result_naming_no_contract_quotes_the_tag() {
         let response = crate::utils::test_fixtures::transaction_response(

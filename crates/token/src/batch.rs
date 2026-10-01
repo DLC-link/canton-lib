@@ -176,10 +176,8 @@ pub mod v2 {
         Ok(recipients)
     }
 
-    /// Distribute to every recipient in a CSV file.
-    ///
-    /// The returned result carries every transfer's outcome and the two
-    /// counts, as the V1 form's does.
+    /// Distribute to every recipient in a CSV file. The result reads as
+    /// [`super::submit_from_csv`]'s does.
     pub async fn submit_from_csv(
         params: Params,
     ) -> Result<crate::transfer::SequentialChainedResult, String> {

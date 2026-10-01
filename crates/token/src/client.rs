@@ -185,9 +185,18 @@ impl TokenClient {
         Ok(self.holdings().await?.len())
     }
 
-    /// Send tokens to a receiver as a two-phase transfer (they must accept).
-    /// See [`SendParams`] for the optional fields and their defaults.
-    pub async fn send(&mut self, params: SendParams) -> Result<(), String> {
+    /// Send tokens to a receiver. See [`SendParams`] for the optional fields
+    /// and their defaults.
+    ///
+    /// The registry answers one of two ways, and the returned
+    /// [`transfer::TransferSubmission`] says which. It creates an offer the
+    /// receiver must accept, or it settles the transfer outright. Read
+    /// [`transfer::TransferOutcome`] before waiting for an acceptance that is
+    /// never coming.
+    pub async fn send(
+        &mut self,
+        params: SendParams,
+    ) -> Result<transfer::TransferSubmission, String> {
         let access_token = self.fresh_token().await?;
 
         let meta = params.reference.map(|r| {

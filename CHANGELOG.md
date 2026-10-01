@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-01
+
 ### Fixed — breaking
 
 - A transfer that settles on submission is no longer reported as a failure.
@@ -56,6 +58,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   allocation defaulted to an empty list when the field was missing, which a
   caller cannot tell from an allocation that left no change. An empty array
   stays a valid answer.
+- `transfer::submit` and `transfer::v2::submit` return a `TransferSubmission`
+  in place of `()`. A single transfer created a contract and named nothing,
+  while the chained form reported the same three values per row. The result
+  carries the outcome, the sender's change ids and the update id.
+  `TransferOutcome` is public for the same reason, and `client::send` returns
+  it too.
 - `TransferResult.transfer_offer_cid` is `None` after a transfer that settles
   on submission, and `Some` after one that creates an offer. Its type does not
   change: it was already `Option<String>`. A caller that needs to tell the two

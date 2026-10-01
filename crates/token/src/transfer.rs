@@ -200,7 +200,7 @@ impl TokenState {
     }
 }
 
-pub async fn submit(mut params: Params) -> Result<(), String> {
+pub async fn submit(mut params: Params) -> Result<TransferSubmission, String> {
     if params.transfer.input_holding_cids.is_none() {
         let contracts = active_contracts::get(active_contracts::Params {
             ledger_host: params.ledger_host.clone(),
@@ -270,14 +270,19 @@ pub async fn submit(mut params: Params) -> Result<(), String> {
         )],
     );
 
-    crate::utils::submit_and_wait(
+    let response_raw = crate::utils::submit_and_wait(
         &params.ledger_host,
         &params.access_token,
         submission_request,
     )
     .await?;
 
-    Ok(())
+    let (sender_change_cids, outcome, update_id) = parse_transfer_response(&response_raw)?;
+    Ok(TransferSubmission {
+        outcome,
+        sender_change_cids,
+        update_id,
+    })
 }
 
 /// Submit multiple transfers sequentially, chaining the change output from each transfer
@@ -473,30 +478,8 @@ pub async fn submit_sequential_chained(
                 // Parse response to extract change UTXOs, transfer offer CID, and update_id
                 match parse_transfer_response(&response_raw) {
                     Ok((sender_change_cids, outcome, update_id)) => {
-                        let transfer_offer_cid = match &outcome {
-                            TransferOutcome::Pending {
-                                transfer_instruction_cid,
-                            } => Some(transfer_instruction_cid.clone()),
-                            TransferOutcome::Completed { .. } => None,
-                        };
-                        match &outcome {
-                            TransferOutcome::Pending {
-                                transfer_instruction_cid,
-                            } => log::debug!(
-                                "Transfer successful | Transfer Offer: {} | Update ID: {} | Change UTXOs: {} remaining",
-                                transfer_instruction_cid,
-                                update_id,
-                                sender_change_cids.len()
-                            ),
-                            TransferOutcome::Completed {
-                                receiver_holding_cids,
-                            } => log::debug!(
-                                "Transfer settled on submission | Receiver holdings: {} | Update ID: {} | Change UTXOs: {} remaining",
-                                receiver_holding_cids.len(),
-                                update_id,
-                                sender_change_cids.len()
-                            ),
-                        }
+                        let transfer_offer_cid = outcome.transfer_offer_cid();
+                        outcome.log_success(&update_id, sender_change_cids.len());
 
                         let result = TransferResult {
                             success: true,
@@ -582,7 +565,7 @@ pub async fn submit_sequential_chained(
 /// the holdings. A caller has to tell them apart: after `Completed` there is
 /// no offer to wait on, and no second step to take.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum TransferOutcome {
+pub enum TransferOutcome {
     /// The registry created a `TransferInstruction`. The receiver accepts it,
     /// or it expires at `executeBefore`.
     Pending { transfer_instruction_cid: String },
@@ -590,6 +573,57 @@ pub(crate) enum TransferOutcome {
     /// registry answers this way when no acceptance is needed, as it does for
     /// a self transfer or a receiver that pre-approved the sender.
     Completed { receiver_holding_cids: Vec<String> },
+}
+
+/// What one `TransferFactory_Transfer` submission created.
+///
+/// [`submit`] and [`v2::submit`] return it. `submit_sequential_chained`
+/// computes the same three values per row and reports them through
+/// [`TransferResult`] instead.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TransferSubmission {
+    /// What the registry did, and the contract it named.
+    pub outcome: TransferOutcome,
+    /// The holdings left over after the transferred amount was taken.
+    pub sender_change_cids: Vec<String>,
+    /// The ledger update this submission produced.
+    pub update_id: String,
+}
+
+impl TransferOutcome {
+    /// The instruction the receiver acts on, or `None` after a settled
+    /// transfer, which leaves nothing to accept.
+    pub fn transfer_offer_cid(&self) -> Option<String> {
+        match self {
+            Self::Pending {
+                transfer_instruction_cid,
+            } => Some(transfer_instruction_cid.clone()),
+            Self::Completed { .. } => None,
+        }
+    }
+
+    /// Log what the registry did. Both chained loops report the same two
+    /// shapes, so the wording lives here rather than at each call site.
+    pub(crate) fn log_success(&self, update_id: &str, change_count: usize) {
+        match self {
+            Self::Pending {
+                transfer_instruction_cid,
+            } => log::debug!(
+                "Transfer successful | Transfer Offer: {} | Update ID: {} | Change UTXOs: {} remaining",
+                transfer_instruction_cid,
+                update_id,
+                change_count
+            ),
+            Self::Completed {
+                receiver_holding_cids,
+            } => log::debug!(
+                "Transfer settled on submission | Receiver holdings: {} | Update ID: {} | Change UTXOs: {} remaining",
+                receiver_holding_cids.len(),
+                update_id,
+                change_count
+            ),
+        }
+    }
 }
 
 /// The holdings that feed the next transfer in a chained batch.
@@ -832,7 +866,7 @@ pub mod v2 {
         .await
     }
 
-    pub async fn submit(mut params: Params) -> Result<(), String> {
+    pub async fn submit(mut params: Params) -> Result<super::TransferSubmission, String> {
         let sender = require_owner(&params.transfer.sender, "transfer.sender")?;
         // The receiver is guarded too, so this entry point agrees with
         // `submit_sequential_chained`, which guards every recipient. Without
@@ -883,9 +917,16 @@ pub mod v2 {
             vec![command],
         );
 
-        submit_and_wait(&params.ledger_host, &params.access_token, submission).await?;
+        let response_raw =
+            submit_and_wait(&params.ledger_host, &params.access_token, submission).await?;
 
-        Ok(())
+        let (sender_change_cids, outcome, update_id) =
+            super::parse_transfer_response(&response_raw)?;
+        Ok(super::TransferSubmission {
+            outcome,
+            sender_change_cids,
+            update_id,
+        })
     }
 
     /// The derived sender for a chained run, or the error that rejects it.
@@ -1071,30 +1112,8 @@ pub mod v2 {
             match submit_and_wait(&params.ledger_host, &current_token, submission).await {
                 Ok(response_raw) => match super::parse_transfer_response(&response_raw) {
                     Ok((sender_change_cids, outcome, update_id)) => {
-                        let transfer_offer_cid = match &outcome {
-                            super::TransferOutcome::Pending {
-                                transfer_instruction_cid,
-                            } => Some(transfer_instruction_cid.clone()),
-                            super::TransferOutcome::Completed { .. } => None,
-                        };
-                        match &outcome {
-                            super::TransferOutcome::Pending {
-                                transfer_instruction_cid,
-                            } => log::debug!(
-                                "Transfer successful | Transfer Offer: {} | Update ID: {} | Change UTXOs: {} remaining",
-                                transfer_instruction_cid,
-                                update_id,
-                                sender_change_cids.len()
-                            ),
-                            super::TransferOutcome::Completed {
-                                receiver_holding_cids,
-                            } => log::debug!(
-                                "Transfer settled on submission | Receiver holdings: {} | Update ID: {} | Change UTXOs: {} remaining",
-                                receiver_holding_cids.len(),
-                                update_id,
-                                sender_change_cids.len()
-                            ),
-                        }
+                        let transfer_offer_cid = outcome.transfer_offer_cid();
+                        outcome.log_success(&update_id, sender_change_cids.len());
                         let result = TransferResult {
                             success: true,
                             transfer_index: idx,
@@ -1162,6 +1181,161 @@ pub mod v2 {
         );
 
         Ok(recorder.finish())
+    }
+}
+
+#[cfg(test)]
+mod chained_result_tests {
+    //! What a chained batch reports back to its caller.
+    //!
+    //! `batch::submit_from_csv` returns this value unchanged, and its own
+    //! entry point reaches the ACS over a websocket that wiremock cannot
+    //! serve. These tests drive the function that computes the value.
+
+    use super::*;
+    use crate::utils::test_fixtures::{exercised_event_value, transaction_response};
+    use wiremock::matchers::{method, path, path_regex};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    const SENDER: &str = "alice::1220ab";
+    const ADMIN: &str = "admin::1220ef";
+
+    /// One settled transfer, in the shape the registry answers with.
+    fn settled_response(change: &str, received: &str) -> serde_json::Value {
+        let response = transaction_response(
+            "1220upd",
+            serde_json::json!([exercised_event_value(
+                "pkg:Splice.Api.Token.TransferInstructionV1:TransferFactory",
+                common::consts::CHOICE_TRANSFER_FACTORY_TRANSFER,
+                serde_json::json!({
+                    "output": {
+                        "tag": "TransferInstructionResult_Completed",
+                        "value": { "receiverHoldingCids": [received] }
+                    },
+                    "senderChangeCids": [change]
+                }),
+            )]),
+        );
+        serde_json::to_value(response).expect("fixture must serialize")
+    }
+
+    /// Keycloak, the registry factory route, then one good submit and a
+    /// failing one. `up_to_n_times` makes the order deterministic.
+    async fn server_with_one_failure() -> MockServer {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "access_token": "test-access-token",
+                "refresh_token": "test-refresh-token",
+                "expires_in": 3600
+            })))
+            .mount(&server)
+            .await;
+
+        Mock::given(method("POST"))
+            .and(path_regex(r".*/transfer-factory$"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "factoryId": "00factory",
+                "transferKind": "offer",
+                "choiceContext": {
+                    "choiceContextData": { "values": {} },
+                    "disclosedContracts": []
+                }
+            })))
+            .mount(&server)
+            .await;
+
+        Mock::given(method("POST"))
+            .and(path(crate::test_utils::stub::SUBMIT_PATH))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(settled_response("00change", "00theirs")),
+            )
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+
+        Mock::given(method("POST"))
+            .and(path(crate::test_utils::stub::SUBMIT_PATH))
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&server)
+            .await;
+
+        server
+    }
+
+    fn recipients() -> Vec<Recipient> {
+        vec![
+            Recipient {
+                receiver: "bob::1220cd".to_string(),
+                amount: common::decimal::DamlDecimal::parse("1.0").expect("valid decimal"),
+                reference: None,
+            },
+            Recipient {
+                receiver: "carol::1220ef".to_string(),
+                amount: common::decimal::DamlDecimal::parse("2.0").expect("valid decimal"),
+                reference: None,
+            },
+        ]
+    }
+
+    /// A batch reports every transfer, and the two counts separate them.
+    ///
+    /// The caller reads `failed_count` to tell a clean run from one where a
+    /// transfer failed. `Ok` means only that the batch ran.
+    #[tokio::test]
+    async fn a_batch_reports_each_transfer_and_both_counts() {
+        let server = server_with_one_failure().await;
+        let mut token_state = TokenState::new(
+            "test-user".to_string(),
+            "test-password".to_string(),
+            "test-client".to_string(),
+            format!("{}/token", server.uri()),
+        )
+        .await
+        .expect("the stub answers Keycloak");
+
+        let result = submit_sequential_chained(
+            SequentialChainedParams {
+                recipients: recipients(),
+                sender: SENDER.to_string(),
+                instrument_id: common::instrument::InstrumentId {
+                    admin: ADMIN.to_string(),
+                    id: "CBTC".to_string(),
+                },
+                initial_holding_cids: vec!["00start".to_string()],
+                ledger_host: server.uri(),
+                registry_url: server.uri(),
+                decentralized_party_id: ADMIN.to_string(),
+                reference_base: None,
+                on_transfer_complete: None,
+                registry_response: None,
+            },
+            &mut token_state,
+        )
+        .await
+        .expect("the batch ran");
+
+        assert_eq!(result.successful_count, 1);
+        assert_eq!(result.failed_count, 1);
+        assert_eq!(result.results.len(), 2);
+
+        assert!(result.results[0].success);
+        assert_eq!(result.results[0].receiver, "bob::1220cd");
+        // A settled transfer leaves no offer to accept.
+        assert_eq!(result.results[0].transfer_offer_cid, None);
+
+        assert!(!result.results[1].success);
+        assert_eq!(result.results[1].receiver, "carol::1220ef");
+        assert!(
+            result.results[1]
+                .error
+                .as_deref()
+                .is_some_and(|e| e.contains("Ledger submission failed")),
+            "the failure must name itself: {:?}",
+            result.results[1].error
+        );
     }
 }
 
@@ -1261,6 +1435,33 @@ mod parser_tests {
                 }),
             )]),
         )
+    }
+
+    /// An answer naming neither contract is an error that says so.
+    ///
+    /// The parser reads the payload's shape, so a result carrying neither
+    /// `transferInstructionCid` nor `receiverHoldingCids` reaches this branch.
+    #[test]
+    fn a_result_naming_neither_contract_fails() {
+        let response = transaction_response(
+            "1220upd",
+            serde_json::json!([exercised_event_value(
+                "pkg:Splice.Api.Token.TransferInstructionV1:TransferFactory",
+                common::consts::CHOICE_TRANSFER_FACTORY_TRANSFER,
+                serde_json::json!({
+                    "output": { "tag": "TransferInstructionResult_Failed", "value": {} },
+                    "senderChangeCids": ["00change"]
+                }),
+            )]),
+        );
+
+        let raw = serde_json::to_string(&response).expect("fixture must serialize");
+        let err = parse_transfer_response(&raw).unwrap_err();
+
+        assert_eq!(
+            err,
+            "Failed to find transferInstructionCid or receiverHoldingCids in response"
+        );
     }
 
     /// A completed transfer whose holding ids are not all strings is an error.
