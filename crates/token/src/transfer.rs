@@ -513,7 +513,11 @@ pub async fn submit_sequential_chained(
                         recorder.record(result).await;
 
                         // Use change as input for next transfer
-                        current_holding_cids = sender_change_cids;
+                        current_holding_cids = next_chain_inputs(
+                            sender_change_cids,
+                            &outcome,
+                            recipient.receiver == params.sender,
+                        );
                     }
                     Err(e) => {
                         let error_msg = format!("Failed to parse transfer response: {}", e);
@@ -588,6 +592,32 @@ pub(crate) enum TransferOutcome {
     Completed { receiver_holding_cids: Vec<String> },
 }
 
+/// The holdings that feed the next transfer in a chained batch.
+///
+/// A transfer that settles on submission creates the receiver's holdings
+/// outright. When the receiver is the sender, the sender owns them and can
+/// spend them on the next row, so they join the change. Chaining the change
+/// alone exhausts the list while the value is still spendable, and the batch
+/// then reports `No UTXOs available for transfer`. A row that moves the whole
+/// balance leaves no change at all, so the next row has nothing without them.
+///
+/// Extracted so the decision can be tested without a ledger. Both the V1 and
+/// the V2 loop call it.
+pub(crate) fn next_chain_inputs(
+    mut sender_change_cids: Vec<String>,
+    outcome: &TransferOutcome,
+    receiver_is_sender: bool,
+) -> Vec<String> {
+    if let TransferOutcome::Completed {
+        receiver_holding_cids,
+    } = outcome
+        && receiver_is_sender
+    {
+        sender_change_cids.extend(receiver_holding_cids.iter().cloned());
+    }
+    sender_change_cids
+}
+
 /// Parse the transfer response to extract sender change CIDs, the outcome, and update_id
 ///
 /// Crate-private. It was `pub` and had no caller outside this file, in this
@@ -650,11 +680,20 @@ fn parse_transfer_response_value(
                     transfer_instruction_cid: cid.to_string(),
                 });
             } else if let Some(cids) = value["receiverHoldingCids"].as_array() {
+                // Every entry or none. Dropping the entries that are not
+                // strings reports a success holding fewer ids than the
+                // registry created, and the caller cannot tell.
+                let mut receiver_holding_cids = Vec::with_capacity(cids.len());
+                for cid in cids {
+                    let Some(cid) = cid.as_str() else {
+                        return Err(
+                            "receiverHoldingCids holds an entry that is not a string".to_string()
+                        );
+                    };
+                    receiver_holding_cids.push(cid.to_string());
+                }
                 outcome = Some(TransferOutcome::Completed {
-                    receiver_holding_cids: cids
-                        .iter()
-                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                        .collect(),
+                    receiver_holding_cids,
                 });
             }
         }
@@ -1068,7 +1107,11 @@ pub mod v2 {
                             error: None,
                         };
                         recorder.record(result).await;
-                        current_holding_cids = sender_change_cids;
+                        current_holding_cids = super::next_chain_inputs(
+                            sender_change_cids,
+                            &outcome,
+                            recipient.receiver == params.sender,
+                        );
                     }
                     Err(e) => {
                         let error_msg = format!("Failed to parse transfer response: {}", e);
@@ -1123,6 +1166,71 @@ pub mod v2 {
 }
 
 #[cfg(test)]
+mod chain_tests {
+    //! What a settled transfer leaves for the next row of a chained batch.
+
+    use super::{TransferOutcome, next_chain_inputs};
+
+    fn cids(values: &[&str]) -> Vec<String> {
+        values.iter().map(|v| v.to_string()).collect()
+    }
+
+    #[test]
+    fn a_pending_transfer_chains_the_sender_change_only() {
+        let outcome = TransferOutcome::Pending {
+            transfer_instruction_cid: "00offer".to_string(),
+        };
+
+        assert_eq!(
+            next_chain_inputs(cids(&["00change"]), &outcome, false),
+            cids(&["00change"])
+        );
+    }
+
+    #[test]
+    fn a_settled_transfer_to_another_party_chains_the_sender_change_only() {
+        // The receiver owns these holdings, so the sender cannot spend them.
+        let outcome = TransferOutcome::Completed {
+            receiver_holding_cids: cids(&["00theirs"]),
+        };
+
+        assert_eq!(
+            next_chain_inputs(cids(&["00change"]), &outcome, false),
+            cids(&["00change"])
+        );
+    }
+
+    #[test]
+    fn a_settled_self_transfer_chains_its_receiver_holdings_too() {
+        // The sender receives these, so they are inputs for the next row.
+        // Dropping them exhausts the chain while the value is still spendable,
+        // and the batch then reports "No UTXOs available for transfer".
+        let outcome = TransferOutcome::Completed {
+            receiver_holding_cids: cids(&["00mine"]),
+        };
+
+        assert_eq!(
+            next_chain_inputs(cids(&["00change"]), &outcome, true),
+            cids(&["00change", "00mine"])
+        );
+    }
+
+    #[test]
+    fn a_settled_self_transfer_with_no_change_still_chains() {
+        // A row that moves the whole balance leaves no change. Without the
+        // receiver holdings the next row has nothing to spend.
+        let outcome = TransferOutcome::Completed {
+            receiver_holding_cids: cids(&["00mine"]),
+        };
+
+        assert_eq!(
+            next_chain_inputs(Vec::new(), &outcome, true),
+            cids(&["00mine"])
+        );
+    }
+}
+
+#[cfg(test)]
 mod parser_tests {
     //! Pure-data fixture tests for the flat-event parser used by
     //! `parse_transfer_response` / `parse_transfer_response_value`.
@@ -1153,6 +1261,36 @@ mod parser_tests {
                 }),
             )]),
         )
+    }
+
+    /// A completed transfer whose holding ids are not all strings is an error.
+    ///
+    /// Dropping the bad entries returns `success: true` with fewer ids than the
+    /// registry created, or none at all, and the caller cannot tell.
+    #[test]
+    fn a_completed_transfer_with_a_non_string_holding_id_fails() {
+        let response = transaction_response(
+            "1220upd",
+            serde_json::json!([exercised_event_value(
+                "pkg:Splice.Api.Token.TransferInstructionV1:TransferFactory",
+                common::consts::CHOICE_TRANSFER_FACTORY_TRANSFER,
+                serde_json::json!({
+                    "output": {
+                        "tag": "TransferInstructionResult_Completed",
+                        "value": { "receiverHoldingCids": ["00good", 42] }
+                    },
+                    "senderChangeCids": ["00change"]
+                }),
+            )]),
+        );
+
+        let raw = serde_json::to_string(&response).expect("fixture must serialize");
+        let err = parse_transfer_response(&raw).unwrap_err();
+
+        assert!(
+            err.contains("receiverHoldingCids"),
+            "the error must name the field: {err}"
+        );
     }
 
     #[test]

@@ -43,6 +43,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Ok` when every transfer in the batch had failed. `Ok` still means the batch
   ran rather than that every transfer succeeded, and a caller reads
   `failed_count` to tell those apart.
+- A chained batch keeps the holdings a settled self transfer creates. When the
+  receiver is the sender, `TransferFactory_Transfer` creates holdings the
+  sender still owns, and the loop fed only the sender's change to the next row.
+  The change list then ran out while the value was still spendable, and the
+  batch reported `No UTXOs available for transfer`. A row that moves the whole
+  balance leaves no change at all, so the next row had nothing. Both the V1 and
+  the V2 loop now chain the receiver's holdings when the two parties match.
+- The parsers reject a malformed id array rather than dropping its bad
+  entries. `receiverHoldingCids` with a non-string entry was read as a success
+  holding fewer ids than the registry created. `senderChangeCids` on an
+  allocation defaulted to an empty list when the field was missing, which a
+  caller cannot tell from an allocation that left no change. An empty array
+  stays a valid answer.
 - `TransferResult.transfer_offer_cid` is `None` after a transfer that settles
   on submission, and `Some` after one that creates an offer. Its type does not
   change: it was already `Option<String>`. A caller that needs to tell the two

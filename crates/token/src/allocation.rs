@@ -183,16 +183,27 @@ fn parse_allocate_response(response_raw: &str) -> Result<AllocationResult, Strin
                 ));
             };
 
+            // Every entry or none, as the transfer parser requires of the
+            // same field. An empty list is a legitimate answer, so defaulting
+            // a missing one to empty would report "no change left over" when
+            // the parser lost the only handles on the change.
+            let Some(cids) = result["senderChangeCids"].as_array() else {
+                return Err(
+                    "Failed to find senderChangeCids in the AllocationFactory_Allocate result"
+                        .to_string(),
+                );
+            };
+            let mut sender_change_cids = Vec::with_capacity(cids.len());
+            for cid in cids {
+                let Some(cid) = cid.as_str() else {
+                    return Err("senderChangeCids holds an entry that is not a string".to_string());
+                };
+                sender_change_cids.push(cid.to_string());
+            }
+
             return Ok(AllocationResult {
                 outcome,
-                sender_change_cids: result["senderChangeCids"]
-                    .as_array()
-                    .map(|cids| {
-                        cids.iter()
-                            .filter_map(|v| v.as_str().map(str::to_string))
-                            .collect()
-                    })
-                    .unwrap_or_default(),
+                sender_change_cids,
             });
         }
     }
@@ -466,6 +477,88 @@ mod tests {
                 sender_change_cids: vec!["00fbfa88".to_string()],
             }
         );
+    }
+
+    /// A missing `senderChangeCids` is an error, not an empty change list.
+    ///
+    /// An empty list is a legitimate answer, so returning one for a missing
+    /// field tells the caller the allocation left no change when the parser
+    /// simply lost the handles. The transfer parser rejects the same field.
+    #[test]
+    fn a_result_without_sender_change_cids_fails() {
+        let response = crate::utils::test_fixtures::transaction_response(
+            "1220alloc",
+            serde_json::json!([crate::utils::test_fixtures::exercised_event_value(
+                "pkg:Utility.Registry.App.V0.Service.AllocationFactory:AllocationFactory",
+                "AllocationFactory_Allocate",
+                serde_json::json!({
+                    "output": {
+                        "tag": "AllocationInstructionResult_Completed",
+                        "value": { "allocationCid": "00451c70" }
+                    }
+                }),
+            )]),
+        );
+
+        let raw = serde_json::to_string(&response).expect("fixture must serialize");
+        let err = parse_allocate_response(&raw).unwrap_err();
+
+        assert!(
+            err.contains("senderChangeCids"),
+            "the error must name the field: {err}"
+        );
+    }
+
+    /// A change id that is not a string is an error.
+    #[test]
+    fn a_non_string_sender_change_cid_fails() {
+        let response = crate::utils::test_fixtures::transaction_response(
+            "1220alloc",
+            serde_json::json!([crate::utils::test_fixtures::exercised_event_value(
+                "pkg:Utility.Registry.App.V0.Service.AllocationFactory:AllocationFactory",
+                "AllocationFactory_Allocate",
+                serde_json::json!({
+                    "output": {
+                        "tag": "AllocationInstructionResult_Completed",
+                        "value": { "allocationCid": "00451c70" }
+                    },
+                    "senderChangeCids": ["00fbfa88", 7]
+                }),
+            )]),
+        );
+
+        let raw = serde_json::to_string(&response).expect("fixture must serialize");
+        let err = parse_allocate_response(&raw).unwrap_err();
+
+        assert!(
+            err.contains("senderChangeCids"),
+            "the error must name the field: {err}"
+        );
+    }
+
+    /// An empty change list stays a success: the allocation used the whole
+    /// holding, so there is nothing left over.
+    #[test]
+    fn an_empty_sender_change_list_parses() {
+        let response = crate::utils::test_fixtures::transaction_response(
+            "1220alloc",
+            serde_json::json!([crate::utils::test_fixtures::exercised_event_value(
+                "pkg:Utility.Registry.App.V0.Service.AllocationFactory:AllocationFactory",
+                "AllocationFactory_Allocate",
+                serde_json::json!({
+                    "output": {
+                        "tag": "AllocationInstructionResult_Completed",
+                        "value": { "allocationCid": "00451c70" }
+                    },
+                    "senderChangeCids": []
+                }),
+            )]),
+        );
+
+        let raw = serde_json::to_string(&response).expect("fixture must serialize");
+        let result = parse_allocate_response(&raw).expect("an empty change list must parse");
+
+        assert!(result.sender_change_cids.is_empty());
     }
 
     /// An answer that names no contract says what the registry did instead.
