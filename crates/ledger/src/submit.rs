@@ -99,39 +99,6 @@ pub async fn wait_for_transaction(params: Params) -> Result<String, String> {
     Ok(body_raw)
 }
 
-#[deprecated(
-    since = "0.5.0",
-    note = "the `submit-and-wait-for-transaction-tree` JSON Ledger API endpoint is removed in Canton 3.5.0; migrate to `wait_for_transaction` (note: the response body shape changes from `transactionTree.eventsById` to `transaction.events`)"
-)]
-pub async fn wait_for_transaction_tree(params: Params) -> Result<String, String> {
-    let url = format!(
-        "{}/v2/commands/submit-and-wait-for-transaction-tree",
-        params.ledger_host
-    );
-    let response = http_client()
-        .post(url)
-        .json(&params.request)
-        .bearer_auth(&params.access_token)
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-
-    let status = response.status();
-    let body_raw = response
-        .text()
-        .await
-        .map_err(|e| format!("Failed to read response in wait_for_transaction_tree: {e}"))?;
-
-    if !status.is_success() {
-        return Err(format!(
-            "Submit request failed in wait_for_transaction_tree [{status}]: {body_raw:?}"
-        ));
-    }
-    log::trace!("Submit success: {body_raw}");
-
-    Ok(body_raw)
-}
-
 fn default_transaction_format(request: &Submission) -> TransactionFormat {
     let mut filters_by_party: HashMap<String, common::filters::Filters> = HashMap::new();
     for party in &request.act_as {

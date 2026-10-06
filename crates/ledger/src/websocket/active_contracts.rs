@@ -2,7 +2,6 @@ use crate::{common, utils};
 use canton_api_client::models;
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::tungstenite::handshake::client::Request;
 
@@ -64,24 +63,8 @@ where
 
     let (mut write, mut read) = ws_stream.split();
 
-    // Setup request
-    let cumulative_vec: Vec<common::CumulativeFilter> = vec![common::CumulativeFilter {
-        identifier_filter: params.filter,
-    }];
-
-    let mut filters_by_party: HashMap<String, common::Filters> = HashMap::new();
-    filters_by_party.insert(
-        params.party.clone(),
-        common::Filters {
-            cumulative: Some(cumulative_vec),
-        },
-    );
     let request = common::GetActiveContractsRequest {
-        filter: Some(common::TransactionFilter {
-            filters_by_party,
-            filters_for_any_party: None,
-        }),
-        verbose: false,
+        event_format: common::EventFormat::for_party(params.party, params.filter, false),
         active_at_offset: params.ledger_end,
     };
     let event = serde_json::to_value(&request).map_err(|e| format!("Serialization error: {e}"))?;
@@ -182,24 +165,8 @@ pub async fn get(params: Params) -> Result<Vec<models::JsActiveContract>, String
 
     let (mut write, mut read) = ws_stream.split();
 
-    // Setup request
-    let cumulative_vec: Vec<common::CumulativeFilter> = vec![common::CumulativeFilter {
-        identifier_filter: params.filter,
-    }];
-
-    let mut filters_by_party: HashMap<String, common::Filters> = HashMap::new();
-    filters_by_party.insert(
-        params.party.clone(),
-        common::Filters {
-            cumulative: Some(cumulative_vec),
-        },
-    );
     let request = common::GetActiveContractsRequest {
-        filter: Some(common::TransactionFilter {
-            filters_by_party,
-            filters_for_any_party: None,
-        }),
-        verbose: false,
+        event_format: common::EventFormat::for_party(params.party, params.filter, false),
         active_at_offset: params.ledger_end,
     };
     let event = serde_json::to_value(&request).map_err(|e| format!("Serialization error: {e}"))?;
