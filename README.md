@@ -169,7 +169,6 @@ cargo run -p examples --bin delete_executed_transfers
 - `websocket::active_contracts::get(Params)` - Query active contracts (WebSocket)
 - `websocket::update::subscribe(Params, message_handler)` - Stream ledger updates
 - `submit::wait_for_transaction(Params)` - Submit commands and wait for the resulting flat transaction (`POST /v2/commands/submit-and-wait-for-transaction`)
-- `submit::wait_for_transaction_tree(Params)` - **Deprecated.** Still calls `POST /v2/commands/submit-and-wait-for-transaction-tree` and returns the tree-shaped response unchanged. The tree endpoint is removed in Canton 3.5.0; migrate to `wait_for_transaction` before upgrading. Note that the response shape changes from `transactionTree.eventsById` (tree) to `transaction.events` (flat) on migration, so downstream parsing must be updated.
 
 ### `registry`
 
@@ -208,7 +207,7 @@ curl -X POST $LEDGER_HOST/v2/state/active-contracts \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -d '{
-    "filter": {
+    "eventFormat": {
       "filtersByParty": {
         "'$PARTY_ID'": {
           "cumulative": [{
@@ -222,9 +221,9 @@ curl -X POST $LEDGER_HOST/v2/state/active-contracts \
             }
           }]
         }
-      }
+      },
+      "verbose": false
     },
-    "verbose": false,
     "activeAtOffset": '$LEDGER_OFFSET'
   }'
 ```
