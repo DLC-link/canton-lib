@@ -39,22 +39,13 @@ pub async fn subscribe(
         .await
         .map_err(|e| format!("WebSocket connection error: {e}"))?;
 
-    let mut map = std::collections::HashMap::new();
-    map.insert(
-        params.party.clone(),
-        common::Filters {
-            cumulative: Some(vec![common::CumulativeFilter {
-                identifier_filter: params.filter,
-            }]),
-        },
-    );
     let (mut write, mut read) = ws_stream.split();
     let event = common::UpdateRequest {
-        filter: Some(common::TransactionFilter {
-            filters_by_party: { map },
-            filters_for_any_party: None,
-        }),
-        verbose: true,
+        update_format: common::UpdateFormat::flat_transactions(common::EventFormat::for_party(
+            params.party,
+            params.filter,
+            true,
+        )),
         begin_exclusive: params.ledger_end,
         end_inclusive: None,
     };

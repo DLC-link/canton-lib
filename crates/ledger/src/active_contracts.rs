@@ -15,24 +15,8 @@ pub struct Params {
 }
 
 pub async fn get_by_party(params: Params) -> Result<Vec<models::JsActiveContract>, String> {
-    let cumulative_vec: Vec<common::CumulativeFilter> = vec![common::CumulativeFilter {
-        identifier_filter: params.filter,
-    }];
-
-    let mut filters_by_party: HashMap<String, common::Filters> = HashMap::new();
-    filters_by_party.insert(
-        params.party.clone(),
-        common::Filters {
-            cumulative: Some(cumulative_vec),
-        },
-    );
-
     let request = common::GetActiveContractsRequest {
-        filter: Some(common::TransactionFilter {
-            filters_by_party,
-            filters_for_any_party: None,
-        }),
-        verbose: false,
+        event_format: common::EventFormat::for_party(params.party, params.filter, false),
         active_at_offset: params.ledger_end,
     };
 

@@ -1,38 +1,94 @@
 use canton_api_client::models;
 use serde::{Deserialize, Serialize};
 
+pub const TRANSACTION_SHAPE_ACS_DELTA: &str = "TRANSACTION_SHAPE_ACS_DELTA";
+
+// Canton 3.6 rejects the top-level `filter` and `verbose` request fields with
+// DEPRECATED_API_DISABLED, so these requests carry an `updateFormat` or an
+// `eventFormat` instead.
 #[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub struct UpdateRequest {
-    #[serde(rename = "filter", skip_serializing_if = "Option::is_none")]
-    pub filter: Option<TransactionFilter>,
-    #[serde(rename = "verbose")]
-    pub verbose: bool,
+    #[serde(rename = "updateFormat")]
+    pub update_format: UpdateFormat,
     #[serde(rename = "beginExclusive")]
     pub begin_exclusive: i64,
     #[serde(rename = "endInclusive")]
     pub end_inclusive: Option<i64>,
-    // #[serde(rename = "eventFormat", skip_serializing_if = "Option::is_none")]
-    // pub update_format: Option<Box<models::EventFormat>>, TODO
 }
 
 #[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub struct GetActiveContractsRequest {
-    #[serde(rename = "filter", skip_serializing_if = "Option::is_none")]
-    pub filter: Option<TransactionFilter>,
-    #[serde(rename = "verbose")]
-    pub verbose: bool,
+    #[serde(rename = "eventFormat")]
+    pub event_format: EventFormat,
     #[serde(rename = "activeAtOffset")]
     pub active_at_offset: i64,
-    // #[serde(rename = "eventFormat", skip_serializing_if = "Option::is_none")]
-    // pub event_format: Option<Box<models::EventFormat>>, // TODO
 }
 
 #[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
-pub struct TransactionFilter {
+pub struct EventFormat {
     #[serde(rename = "filtersByParty")]
     pub filters_by_party: std::collections::HashMap<String, Filters>,
     #[serde(rename = "filtersForAnyParty", skip_serializing_if = "Option::is_none")]
     pub filters_for_any_party: Option<Filters>,
+    #[serde(rename = "verbose")]
+    pub verbose: bool,
+}
+
+impl EventFormat {
+    /// Builds an event format that matches `filter` for the single `party`.
+    pub fn for_party(party: String, filter: IdentifierFilter, verbose: bool) -> Self {
+        let mut filters_by_party = std::collections::HashMap::new();
+        filters_by_party.insert(
+            party,
+            Filters {
+                cumulative: Some(vec![CumulativeFilter {
+                    identifier_filter: filter,
+                }]),
+            },
+        );
+        Self {
+            filters_by_party,
+            filters_for_any_party: None,
+            verbose,
+        }
+    }
+}
+
+#[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
+pub struct UpdateFormat {
+    #[serde(
+        rename = "includeTransactions",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub include_transactions: Option<TransactionFormat>,
+    #[serde(
+        rename = "includeReassignments",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub include_reassignments: Option<EventFormat>,
+}
+
+impl UpdateFormat {
+    /// Builds the update format that the deprecated `filter` field selected:
+    /// flat (ACS delta) transactions plus reassignments, with no topology
+    /// events.
+    pub fn flat_transactions(event_format: EventFormat) -> Self {
+        Self {
+            include_transactions: Some(TransactionFormat {
+                event_format: event_format.clone(),
+                transaction_shape: TRANSACTION_SHAPE_ACS_DELTA.to_string(),
+            }),
+            include_reassignments: Some(event_format),
+        }
+    }
+}
+
+#[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
+pub struct TransactionFormat {
+    #[serde(rename = "eventFormat")]
+    pub event_format: EventFormat,
+    #[serde(rename = "transactionShape")]
+    pub transaction_shape: String,
 }
 
 // TODO: It is duplicated with filters.rs in crates/common/src/filters.rs, let's remove later.
@@ -142,10 +198,10 @@ pub fn convert_get_active_contracts_request(
     req: GetActiveContractsRequest,
 ) -> models::GetActiveContractsRequest {
     models::GetActiveContractsRequest {
-        filter: req.filter.map(convert_transaction_filter),
-        verbose: Some(req.verbose),
+        filter: None,
+        verbose: None,
         active_at_offset: req.active_at_offset,
-        event_format: None, // TODO
+        event_format: Some(convert_event_format(req.event_format)),
         // None requests the first page from the server (no resume token).
         // TODO: surface pagination — if Canton ever paginates active-contracts
         // responses, callers need a way to pass the server-returned
@@ -155,17 +211,18 @@ pub fn convert_get_active_contracts_request(
     }
 }
 
-pub fn convert_transaction_filter(tf: TransactionFilter) -> Box<models::TransactionFilter> {
+pub fn convert_event_format(ef: EventFormat) -> Box<models::EventFormat> {
     let mut filters_by_party: std::collections::HashMap<String, models::Filters> =
         std::collections::HashMap::new();
-    for (party, filter) in tf.filters_by_party {
+    for (party, filter) in ef.filters_by_party {
         filters_by_party.insert(party, convert_filters(filter));
     }
-    Box::new(models::TransactionFilter {
+    Box::new(models::EventFormat {
         filters_by_party: Some(filters_by_party),
-        filters_for_any_party: tf
+        filters_for_any_party: ef
             .filters_for_any_party
             .map(|f| Box::new(convert_filters(f))),
+        verbose: Some(ef.verbose),
     })
 }
 
@@ -244,36 +301,92 @@ mod tests {
     use super::*;
 
     #[test]
-    fn convert_get_active_contracts_request_wraps_verbose_and_clears_continuation_token() {
+    fn convert_get_active_contracts_request_sends_event_format_and_no_deprecated_fields() {
         let req = GetActiveContractsRequest {
-            filter: None,
-            verbose: true,
+            event_format: EventFormat {
+                verbose: true,
+                ..Default::default()
+            },
             active_at_offset: 42,
         };
         let out = convert_get_active_contracts_request(req);
-        assert_eq!(out.verbose, Some(true));
         assert_eq!(out.active_at_offset, 42);
         assert!(out.filter.is_none());
-        assert!(out.event_format.is_none());
+        assert!(out.verbose.is_none());
+        assert_eq!(
+            out.event_format.expect("event_format is set").verbose,
+            Some(true)
+        );
         assert!(out.stream_continuation_token.is_none());
+
+        let json = serde_json::to_value(convert_get_active_contracts_request(
+            GetActiveContractsRequest::default(),
+        ))
+        .unwrap();
+        assert!(json.get("filter").is_none());
+        assert!(json.get("verbose").is_none());
+        assert!(json.get("eventFormat").is_some());
     }
 
     #[test]
-    fn convert_transaction_filter_wraps_filters_by_party_in_some() {
-        let mut tf = TransactionFilter {
-            filters_by_party: std::collections::HashMap::new(),
-            filters_for_any_party: None,
-        };
-        tf.filters_by_party
-            .insert("alice".to_string(), Filters::default());
+    fn convert_event_format_wraps_filters_by_party_in_some() {
+        let ef = EventFormat::for_party("alice".to_string(), IdentifierFilter::default(), false);
 
-        let out = convert_transaction_filter(tf);
+        let out = convert_event_format(ef);
         let by_party = out
             .filters_by_party
             .as_ref()
             .expect("filters_by_party should be Some after conversion");
         assert!(by_party.contains_key("alice"));
         assert!(out.filters_for_any_party.is_none());
+        assert_eq!(out.verbose, Some(false));
+    }
+
+    #[test]
+    fn get_active_contracts_request_serializes_event_format_only() {
+        let req = GetActiveContractsRequest {
+            event_format: EventFormat::for_party(
+                "alice".to_string(),
+                IdentifierFilter::default(),
+                false,
+            ),
+            active_at_offset: 7,
+        };
+        let json = serde_json::to_value(&req).unwrap();
+        assert!(json.get("filter").is_none());
+        assert!(json.get("verbose").is_none());
+        assert_eq!(json["activeAtOffset"], 7);
+        assert_eq!(json["eventFormat"]["verbose"], false);
+        assert!(json["eventFormat"]["filtersByParty"]["alice"]["cumulative"].is_array());
+    }
+
+    #[test]
+    fn update_request_serializes_update_format_only() {
+        let req = UpdateRequest {
+            update_format: UpdateFormat::flat_transactions(EventFormat::for_party(
+                "alice".to_string(),
+                IdentifierFilter::default(),
+                true,
+            )),
+            begin_exclusive: 3,
+            end_inclusive: None,
+        };
+        let json = serde_json::to_value(&req).unwrap();
+        assert!(json.get("filter").is_none());
+        assert!(json.get("verbose").is_none());
+        assert_eq!(json["beginExclusive"], 3);
+
+        let transactions = &json["updateFormat"]["includeTransactions"];
+        assert_eq!(
+            transactions["transactionShape"],
+            TRANSACTION_SHAPE_ACS_DELTA
+        );
+        assert_eq!(transactions["eventFormat"]["verbose"], true);
+        assert!(transactions["eventFormat"]["filtersByParty"]["alice"].is_object());
+        assert!(
+            json["updateFormat"]["includeReassignments"]["filtersByParty"]["alice"].is_object()
+        );
+        assert!(json["updateFormat"].get("includeTopologyEvents").is_none());
     }
 
     #[test]

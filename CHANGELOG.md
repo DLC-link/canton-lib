@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-06
+
+### Fixed — breaking
+
+- Active-contract queries and update subscriptions work on Canton 3.6.1.
+  Canton 3.6.1 (Splice 0.9.0) rejects the top-level `filter` and `verbose`
+  request fields with `DEPRECATED_API_DISABLED`, and Canton 3.7 removes them.
+  `active_contracts::get_by_party`, `websocket::active_contracts::get`,
+  `websocket::active_contracts::get_with_callback` and
+  `websocket::update::subscribe` now send `eventFormat` or `updateFormat`.
+  Their `Params` do not change, so `token::active_contracts::get` and other
+  callers of these functions need only the version bump. Tracked in
+  DLC-link/dlc-infra#274.
+- `common::GetActiveContractsRequest` carries an `event_format` in place of
+  `filter` and `verbose`. `common::UpdateRequest` carries an `update_format`
+  in place of the same two fields. The update format selects flat
+  (`TRANSACTION_SHAPE_ACS_DELTA`) transactions and reassignments, which is
+  what the old `filter` selected. `common::TransactionFilter` and
+  `convert_transaction_filter` are gone. `common::EventFormat` and
+  `convert_event_format` replace them.
+
+### Removed — breaking
+
+- `submit::wait_for_transaction_tree` is removed. It called
+  `submit-and-wait-for-transaction-tree`, which Canton 3.6.1 disables. Use
+  `submit::wait_for_transaction`. Its response lists events in
+  `transaction.events`, not in `transactionTree.eventsById`.
+
 ## [0.9.0] - 2026-10-01
 
 ### Fixed — breaking
