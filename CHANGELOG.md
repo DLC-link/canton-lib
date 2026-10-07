@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-10-07
+
+### Fixed
+
+- The three websocket functions return the Ledger API's error instead of an
+  empty result. The participant answers a request it rejects with one message
+  that carries `code` and `cause`, and then closes the stream.
+  `websocket::active_contracts::get` read that message as a stream entry with
+  no contract, and returned `Ok(vec![])`. `get_with_callback` passed it to the
+  callback and returned `Ok(())`. `websocket::update::subscribe` passed it to
+  the handler and returned `Ok(())` when the stream closed.
+
+  Each function now returns `Err("Ledger API returned <code>: <cause>")`, and
+  passes no message to the callback or the handler. Their signatures do not
+  change.
+
+  The failure was measured on a devnet participant that runs Canton 3.6.1. A
+  query built with 0.9.0 sent the disabled `filter` field. The participant
+  answered `DEPRECATED_API_DISABLED`, and `token::active_contracts::get`
+  reported a balance of 0 for a party that held 4 holdings.
+
 ## [0.10.0] - 2026-10-06
 
 ### Fixed — breaking

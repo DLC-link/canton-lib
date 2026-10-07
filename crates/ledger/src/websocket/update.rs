@@ -68,6 +68,10 @@ pub async fn subscribe(
     while let Some(message) = read.next().await {
         match message {
             Ok(Message::Text(text)) => {
+                if let Some(e) = super::ledger_api_error(&text) {
+                    error = Some(e);
+                    break;
+                }
                 if let Err(e) = message_handler(text) {
                     log::error!("Error handling message: {e}");
                 }

@@ -93,6 +93,10 @@ where
                     ));
                     break;
                 }
+                if let Some(e) = super::ledger_api_error(&text) {
+                    error = Some(e);
+                    break;
+                }
                 callback(text).await;
             }
             Ok(Message::Binary(_)) => {
@@ -194,6 +198,10 @@ pub async fn get(params: Params) -> Result<Vec<models::JsActiveContract>, String
                         "Received security-sensitive error from server: {}",
                         text
                     ));
+                    break;
+                }
+                if let Some(e) = super::ledger_api_error(&text) {
+                    error = Some(e);
                     break;
                 }
                 let d: ContractMessage = serde_json::from_str(&text)
