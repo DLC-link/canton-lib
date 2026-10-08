@@ -1,5 +1,4 @@
 pub mod active_contracts;
-pub mod active_contracts_page;
 pub mod client;
 pub mod common;
 pub mod ledger_end;

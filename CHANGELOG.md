@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `active_contracts_page::post_v2_state_active_contracts_page` sends the POST
+- `active_contracts::post_v2_state_active_contracts_page` sends the POST
   form of `/v2/state/active-contracts-page`. `canton-api-client` 3.6.0 has
   only the GET form. Canton 3.6.1 disables that GET form by default, and
   Canton 3.7 removes it. The function takes the same arguments and returns the
