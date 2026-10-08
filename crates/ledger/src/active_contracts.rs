@@ -3,6 +3,7 @@ use canton_api_client::apis::configuration::Configuration;
 use canton_api_client::apis::default_api as canton_api;
 use canton_api_client::apis::{Error, ResponseContent};
 use canton_api_client::models;
+use serde::{Deserialize, Serialize, de::Error as _};
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -68,42 +69,113 @@ pub async fn get_by_party(params: Params) -> Result<Vec<models::JsActiveContract
     Ok(response)
 }
 
-/// Filter active contracts based on CreateArgument values
-/// Sends `POST /v2/state/active-contracts-page` and returns one page.
-///
-/// `canton-api-client` 3.6.0 has only the GET form, which Canton 3.6.1
-/// disables by default and Canton 3.7 removes. This function has the same name
-/// style, arguments and error type as a generated function, so a caller can
-/// move to the generated one when the client has it.
-///
-/// A failed send or body read is `Error::Reqwest`, a non-2xx answer is
-/// `Error::ResponseError` with the status and the body, and a page that does
-/// not parse is `Error::Serde`.
-pub async fn post_v2_state_active_contracts_page(
-    configuration: &Configuration,
-    request: &models::GetActiveContractsPageRequest,
-) -> Result<models::JsGetActiveContractsPageResponse, Error<()>> {
-    let url = format!("{}/v2/state/active-contracts-page", configuration.base_path);
-    let mut builder = configuration.client.post(&url).json(request);
-    if let Some(user_agent) = &configuration.user_agent {
-        builder = builder.header("user-agent", user_agent);
-    }
-    if let Some(token) = &configuration.bearer_access_token {
-        builder = builder.bearer_auth(token);
-    }
-    let response = builder.send().await?;
-    let status = response.status();
-    let content = response.text().await?;
-    if !status.is_success() {
-        return Err(Error::ResponseError(ResponseContent {
-            status,
-            content,
-            entity: None,
-        }));
-    }
-    Ok(serde_json::from_str(&content)?)
+// `post_v2_state_active_contracts_page` and its error type are generated with
+// openapi-generator 7.22.0 (`-g rust`) from the Canton 3.6.1 OpenAPI spec, the
+// same way `canton-api-client` is built. `canton-api-client` 3.6.0 has only the
+// GET form, which Canton 3.6.1 disables by default and Canton 3.7 removes. Only
+// the module paths, the formatting and the lint allows differ from the generated
+// code. `ContentType` is copied because the client keeps it private. When a
+// newer `canton-api-client` has this function, delete this block and call the
+// generated one.
+
+/// struct for typed errors of method [`post_v2_state_active_contracts_page`]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum PostV2StateActiveContractsPageError {
+    Status400(String),
+    DefaultResponse(models::JsCantonError),
+    UnknownValue(serde_json::Value),
 }
 
+#[allow(clippy::result_large_err, clippy::needless_return)]
+pub async fn post_v2_state_active_contracts_page(
+    configuration: &Configuration,
+    get_active_contracts_page_request: models::GetActiveContractsPageRequest,
+) -> Result<models::JsGetActiveContractsPageResponse, Error<PostV2StateActiveContractsPageError>> {
+    // add a prefix to parameters to efficiently prevent name collisions
+    let p_body_get_active_contracts_page_request = get_active_contracts_page_request;
+
+    let uri_str = format!("{}/v2/state/active-contracts-page", configuration.base_path);
+    let mut req_builder = configuration
+        .client
+        .request(reqwest::Method::POST, &uri_str);
+
+    if let Some(ref user_agent) = configuration.user_agent {
+        req_builder = req_builder.header(reqwest::header::USER_AGENT, user_agent.clone());
+    }
+    if let Some(ref token) = configuration.bearer_access_token {
+        req_builder = req_builder.bearer_auth(token.to_owned());
+    };
+    if let Some(ref apikey) = configuration.api_key {
+        let key = apikey.key.clone();
+        let value = match apikey.prefix {
+            Some(ref prefix) => format!("{} {}", prefix, key),
+            None => key,
+        };
+        req_builder = req_builder.header("Sec-WebSocket-Protocol", value);
+    };
+    req_builder = req_builder.json(&p_body_get_active_contracts_page_request);
+
+    let req = req_builder.build()?;
+    let resp = configuration.client.execute(req).await?;
+
+    let status = resp.status();
+    let content_type = resp
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("application/octet-stream");
+    let content_type = ContentType::from(content_type);
+
+    if !status.is_client_error() && !status.is_server_error() {
+        let content = resp.text().await?;
+        match content_type {
+            ContentType::Json => serde_json::from_str(&content).map_err(Error::from),
+            ContentType::Text => {
+                return Err(Error::from(serde_json::Error::custom(
+                    "Received `text/plain` content type response that cannot be converted to `models::JsGetActiveContractsPageResponse`",
+                )));
+            }
+            ContentType::Unsupported(unknown_type) => {
+                return Err(Error::from(serde_json::Error::custom(format!(
+                    "Received `{unknown_type}` content type response that cannot be converted to `models::JsGetActiveContractsPageResponse`"
+                ))));
+            }
+        }
+    } else {
+        let content = resp.text().await?;
+        let entity: Option<PostV2StateActiveContractsPageError> =
+            serde_json::from_str(&content).ok();
+        Err(Error::ResponseError(ResponseContent {
+            status,
+            content,
+            entity,
+        }))
+    }
+}
+
+/// A content type supported by this client.
+#[allow(dead_code)]
+enum ContentType {
+    Json,
+    Text,
+    Unsupported(String),
+}
+
+#[allow(clippy::needless_return)]
+impl From<&str> for ContentType {
+    fn from(content_type: &str) -> Self {
+        if content_type.starts_with("application") && content_type.contains("json") {
+            return Self::Json;
+        } else if content_type.starts_with("text/plain") {
+            return Self::Text;
+        } else {
+            return Self::Unsupported(content_type.to_string());
+        }
+    }
+}
+
+/// Filter active contracts based on CreateArgument values
 #[allow(dead_code)]
 fn filter_active_contracts_by_create_argument(
     contracts: Vec<models::JsActiveContract>,
@@ -265,7 +337,7 @@ mod page_tests {
         )
         .await;
 
-        let page = post_v2_state_active_contracts_page(&configuration(base), &request())
+        let page = post_v2_state_active_contracts_page(&configuration(base), request())
             .await
             .expect("the page must read");
         let (headers, body) = received.try_recv().expect("the participant got the POST");
@@ -282,29 +354,35 @@ mod page_tests {
     }
 
     #[tokio::test]
-    async fn a_refusal_keeps_the_status_and_the_body() {
+    async fn a_refusal_keeps_the_status_and_the_canton_error() {
         let (base, _received) = participant(
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            r#"{"code":"DEPRECATED_API_DISABLED"}"#,
+            axum::http::StatusCode::BAD_REQUEST,
+            r#"{"code":"DEPRECATED_API_DISABLED","cause":"disabled","context":{},"errorCategory":8}"#,
         )
         .await;
 
-        let error = post_v2_state_active_contracts_page(&configuration(base), &request())
+        let error = post_v2_state_active_contracts_page(&configuration(base), request())
             .await
             .expect_err("a refused read must fail");
 
         let Error::ResponseError(response) = error else {
             panic!("expected a ResponseError, got {error}");
         };
-        assert_eq!(response.status.as_u16(), 500);
+        assert_eq!(response.status.as_u16(), 400);
         assert!(response.content.contains("DEPRECATED_API_DISABLED"));
+        let Some(PostV2StateActiveContractsPageError::DefaultResponse(canton_error)) =
+            response.entity
+        else {
+            panic!("expected the Canton error, got {:?}", response.entity);
+        };
+        assert_eq!(canton_error.code, "DEPRECATED_API_DISABLED");
     }
 
     #[tokio::test]
     async fn a_page_that_does_not_parse_is_a_serde_error() {
         let (base, _received) = participant(axum::http::StatusCode::OK, "{}").await;
 
-        let error = post_v2_state_active_contracts_page(&configuration(base), &request())
+        let error = post_v2_state_active_contracts_page(&configuration(base), request())
             .await
             .expect_err("a page without its fields must fail");
 
