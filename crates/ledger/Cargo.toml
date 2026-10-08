@@ -20,6 +20,7 @@ url = "2.5.4"
 common = { workspace = true }
 
 [dev-dependencies]
+axum = { version = "0.8", default-features = false, features = ["tokio", "http1", "json"] }
 dotenvy = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tokio-macros = { workspace = true }
