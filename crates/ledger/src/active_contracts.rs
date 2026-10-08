@@ -3,7 +3,7 @@ use canton_api_client::apis::configuration::Configuration;
 use canton_api_client::apis::default_api as canton_api;
 use canton_api_client::apis::{Error, ResponseContent};
 use canton_api_client::models;
-use serde::{Deserialize, Serialize, de::Error as _};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -69,110 +69,49 @@ pub async fn get_by_party(params: Params) -> Result<Vec<models::JsActiveContract
     Ok(response)
 }
 
-// `post_v2_state_active_contracts_page` and its error type are generated with
-// openapi-generator 7.22.0 (`-g rust`) from the Canton 3.6.1 OpenAPI spec, the
-// same way `canton-api-client` is built. `canton-api-client` 3.6.0 has only the
-// GET form, which Canton 3.6.1 disables by default and Canton 3.7 removes. Only
-// the module paths, the formatting and the lint allows differ from the generated
-// code. `ContentType` is copied because the client keeps it private. When a
-// newer `canton-api-client` has this function, delete this block and call the
-// generated one.
-
-/// struct for typed errors of method [`post_v2_state_active_contracts_page`]
+/// The typed error body of [`post_v2_state_active_contracts_page`], in the
+/// same shape as the generated `canton_api` error types.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum PostV2StateActiveContractsPageError {
     Status400(String),
     DefaultResponse(models::JsCantonError),
-    UnknownValue(serde_json::Value),
+    UnknownValue(Value),
 }
 
-#[allow(clippy::result_large_err, clippy::needless_return)]
+/// Sends `POST /v2/state/active-contracts-page` and returns one page.
+///
+/// `canton-api-client` 3.6.0 has only the GET form, which Canton 3.6.1
+/// disables by default and Canton 3.7 removes. This function has the same
+/// signature and error type as a generated `canton_api` function, so a caller
+/// can switch to the generated one when the client has it.
+// `canton_api`'s own `Error` type fixes the size of the error.
+#[allow(clippy::result_large_err)]
 pub async fn post_v2_state_active_contracts_page(
     configuration: &Configuration,
-    get_active_contracts_page_request: models::GetActiveContractsPageRequest,
+    request: models::GetActiveContractsPageRequest,
 ) -> Result<models::JsGetActiveContractsPageResponse, Error<PostV2StateActiveContractsPageError>> {
-    // add a prefix to parameters to efficiently prevent name collisions
-    let p_body_get_active_contracts_page_request = get_active_contracts_page_request;
-
-    let uri_str = format!("{}/v2/state/active-contracts-page", configuration.base_path);
-    let mut req_builder = configuration
-        .client
-        .request(reqwest::Method::POST, &uri_str);
-
-    if let Some(ref user_agent) = configuration.user_agent {
-        req_builder = req_builder.header(reqwest::header::USER_AGENT, user_agent.clone());
+    let url = format!("{}/v2/state/active-contracts-page", configuration.base_path);
+    let mut builder = configuration.client.post(url).json(&request);
+    if let Some(user_agent) = &configuration.user_agent {
+        builder = builder.header("user-agent", user_agent);
     }
-    if let Some(ref token) = configuration.bearer_access_token {
-        req_builder = req_builder.bearer_auth(token.to_owned());
-    };
-    if let Some(ref apikey) = configuration.api_key {
-        let key = apikey.key.clone();
-        let value = match apikey.prefix {
-            Some(ref prefix) => format!("{} {}", prefix, key),
-            None => key,
-        };
-        req_builder = req_builder.header("Sec-WebSocket-Protocol", value);
-    };
-    req_builder = req_builder.json(&p_body_get_active_contracts_page_request);
+    if let Some(token) = &configuration.bearer_access_token {
+        builder = builder.bearer_auth(token);
+    }
 
-    let req = req_builder.build()?;
-    let resp = configuration.client.execute(req).await?;
-
-    let status = resp.status();
-    let content_type = resp
-        .headers()
-        .get("content-type")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("application/octet-stream");
-    let content_type = ContentType::from(content_type);
-
-    if !status.is_client_error() && !status.is_server_error() {
-        let content = resp.text().await?;
-        match content_type {
-            ContentType::Json => serde_json::from_str(&content).map_err(Error::from),
-            ContentType::Text => {
-                return Err(Error::from(serde_json::Error::custom(
-                    "Received `text/plain` content type response that cannot be converted to `models::JsGetActiveContractsPageResponse`",
-                )));
-            }
-            ContentType::Unsupported(unknown_type) => {
-                return Err(Error::from(serde_json::Error::custom(format!(
-                    "Received `{unknown_type}` content type response that cannot be converted to `models::JsGetActiveContractsPageResponse`"
-                ))));
-            }
-        }
-    } else {
-        let content = resp.text().await?;
-        let entity: Option<PostV2StateActiveContractsPageError> =
-            serde_json::from_str(&content).ok();
-        Err(Error::ResponseError(ResponseContent {
+    let response = builder.send().await?;
+    let status = response.status();
+    let content = response.text().await?;
+    if status.is_client_error() || status.is_server_error() {
+        let entity = serde_json::from_str(&content).ok();
+        return Err(Error::ResponseError(ResponseContent {
             status,
             content,
             entity,
-        }))
+        }));
     }
-}
-
-/// A content type supported by this client.
-#[allow(dead_code)]
-enum ContentType {
-    Json,
-    Text,
-    Unsupported(String),
-}
-
-#[allow(clippy::needless_return)]
-impl From<&str> for ContentType {
-    fn from(content_type: &str) -> Self {
-        if content_type.starts_with("application") && content_type.contains("json") {
-            return Self::Json;
-        } else if content_type.starts_with("text/plain") {
-            return Self::Text;
-        } else {
-            return Self::Unsupported(content_type.to_string());
-        }
-    }
+    Ok(serde_json::from_str(&content)?)
 }
 
 /// Filter active contracts based on CreateArgument values
