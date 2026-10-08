@@ -10,7 +10,7 @@ reqwest = { workspace = true, features = ["json"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
-canton-api-client = "3.6.0-0.1.0"
+canton-api-client = { workspace = true }
 futures-util = "0.3.31"
 log = "0.4.17"
 rand = "0.8"
@@ -20,7 +20,6 @@ url = "2.5.4"
 common = { workspace = true }
 
 [dev-dependencies]
-axum = { version = "0.8", default-features = false, features = ["tokio", "http1", "json"] }
 dotenvy = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tokio-macros = { workspace = true }

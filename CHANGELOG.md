@@ -7,15 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
+### Changed
 
-- `active_contracts::post_v2_state_active_contracts_page` sends the POST
-  form of `/v2/state/active-contracts-page`, with its error type
-  `PostV2StateActiveContractsPageError`. `canton-api-client` 3.6.0 has only
-  the GET form. Canton 3.6.1 disables that GET form by default, and Canton 3.7
-  removes it. The function has the same signature and error type as a
-  generated `canton_api` function, so a caller can switch to the generated one
-  when the client has it.
+- `canton-api-client` moves to 3.6.1, regenerated from the Canton 3.6.1
+  OpenAPI spec. Canton 3.6.1 disables `GET /v2/state/active-contracts-page`
+  by default, and Canton 3.7 removes it. The new client has the POST form,
+  `post_v2_state_active_contracts_page`. `ledger_end` passes `None` for the
+  new `synchronizer_ids` argument of `get_v2_state_ledger_end`, so its request
+  does not change.
 
 ## [0.10.1] - 2026-10-07
 

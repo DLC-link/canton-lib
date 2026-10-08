@@ -13,7 +13,7 @@ pub struct Response {
 }
 
 pub async fn get_with_client(client: &Client) -> Result<Response, String> {
-    let ledger_end = canton_api::get_v2_state_ledger_end(&client.configuration)
+    let ledger_end = canton_api::get_v2_state_ledger_end(&client.configuration, None)
         .await
         .map_err(|e| format!("Error getting ledger end: {}", e))?;
 
@@ -28,7 +28,7 @@ pub async fn get_with_client(client: &Client) -> Result<Response, String> {
 pub async fn get(params: Params) -> Result<Response, String> {
     let canton_client = Client::new(params.access_token, params.ledger_host);
 
-    let ledger_end = canton_api::get_v2_state_ledger_end(&canton_client.configuration)
+    let ledger_end = canton_api::get_v2_state_ledger_end(&canton_client.configuration, None)
         .await
         .map_err(|e| format!("Error getting ledger end: {}", e))?;
 

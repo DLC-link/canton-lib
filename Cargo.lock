@@ -188,8 +188,6 @@ dependencies = [
  "http",
  "http-body",
  "http-body-util",
- "hyper",
- "hyper-util",
  "itoa",
  "matchit",
  "memchr",
@@ -197,10 +195,7 @@ dependencies = [
  "percent-encoding",
  "pin-project-lite",
  "serde_core",
- "serde_json",
- "serde_path_to_error",
  "sync_wrapper",
- "tokio",
  "tower",
  "tower-layer",
  "tower-service",
@@ -342,9 +337,8 @@ dependencies = [
 
 [[package]]
 name = "canton-api-client"
-version = "3.6.0-0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1702122d98d165e2c77a1c6532e8be8a80d5bf7f25eac71beed5587a61fcaf01"
+version = "3.6.1-0.1.0"
+source = "git+https://github.com/ksrichard/canton-api-rust-client?rev=befc9f359fb62d9cb0b4da0b7f3526f4e2a1166a#befc9f359fb62d9cb0b4da0b7f3526f4e2a1166a"
 dependencies = [
  "chrono",
  "reqwest 0.13.3",
@@ -1402,7 +1396,6 @@ checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 name = "ledger"
 version = "0.10.1"
 dependencies = [
- "axum",
  "base64",
  "canton-api-client",
  "common",
@@ -2353,17 +2346,6 @@ dependencies = [
  "itoa",
  "memchr",
  "ryu",
- "serde",
- "serde_core",
-]
-
-[[package]]
-name = "serde_path_to_error"
-version = "0.1.20"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "10a9ff822e371bb5403e391ecd83e182e0e77ba7f6fe0160b795797109d1b457"
-dependencies = [
- "itoa",
  "serde",
  "serde_core",
 ]

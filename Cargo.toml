@@ -26,7 +26,7 @@ panic = "unwind"
 
 [workspace.dependencies]
 base64 = { version = "0.22.1" }
-canton-api-client = { version = "3.6.0-0.1.0" }
+canton-api-client = { git = "https://github.com/ksrichard/canton-api-rust-client", rev = "befc9f359fb62d9cb0b4da0b7f3526f4e2a1166a" }
 chrono = { version = "0.4" }
 common = { path = "crates/common" }
 csv = { version = "1.3" }
