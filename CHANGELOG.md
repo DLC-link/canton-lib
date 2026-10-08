@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `canton-api-client` moves to 3.6.1, regenerated from the Canton 3.6.1
+  OpenAPI spec. Canton 3.6.1 disables `GET /v2/state/active-contracts-page`
+  by default, and Canton 3.7 removes it. The new client has the POST form,
+  `post_v2_state_active_contracts_page`. `ledger_end` passes `None` for the
+  new `synchronizer_ids` argument of `get_v2_state_ledger_end`, so its request
+  does not change.
+
 ## [0.10.1] - 2026-10-07
 
 ### Fixed

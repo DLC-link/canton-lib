@@ -26,7 +26,7 @@ panic = "unwind"
 
 [workspace.dependencies]
 base64 = { version = "0.22.1" }
-canton-api-client = { version = "3.6.0-0.1.0" }
+canton-api-client = "3.6.1-0.1.0"
 chrono = { version = "0.4" }
 common = { path = "crates/common" }
 csv = { version = "1.3" }
