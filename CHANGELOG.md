@@ -18,6 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `AcceptCredentialOfferParams` loses its `user_service_template_id` field;
   drop it at the call site.
 
+### Security
+
+- `zip` moves from 2.4.2 to 9.0.5, which closes RUSTSEC-2026-0367 and
+  RUSTSEC-2026-0368. The `token` crate only reads `META-INF/MANIFEST.MF`
+  from a DAR in memory, so the extraction bugs never applied, but
+  `cargo deny check advisories` fails on the old version.
+
 ## [0.11.0] - 2026-10-08
 
 ### Changed
