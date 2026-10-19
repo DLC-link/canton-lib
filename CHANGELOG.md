@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — breaking
+
+- `token::credentials::accept_credential_offer` now exercises
+  `UserService_AcceptFreeCredentialOffer` with the package-name template id
+  (`#utility-credential-app-v0:...`). It used to send the template id of the
+  UserService created event, which pins the package version the UserService
+  was created with. A participant that no longer vets that old version
+  rejected the accept with `INVALID_PRESCRIBED_SYNCHRONIZER_ID`.
+  `AcceptCredentialOfferParams` loses its `user_service_template_id` field;
+  drop it at the call site.
+
 ## [0.11.0] - 2026-10-08
 
 ### Changed
