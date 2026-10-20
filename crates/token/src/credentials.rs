@@ -584,13 +584,19 @@ mod parser_tests {
         let command = accept_credential_offer_command("00aa", "00bb");
         assert_eq!(
             command.exercise_command.template_id,
-            USER_SERVICE_TEMPLATE_ID
+            "#utility-credential-app-v0:Utility.Credential.App.V0.Service.User:UserService"
         );
         assert_eq!(command.exercise_command.contract_id, "00aa");
         assert_eq!(
             command.exercise_command.choice,
             "UserService_AcceptFreeCredentialOffer"
         );
+        let submission::ChoiceArgumentsVariations::Generic(argument) =
+            &command.exercise_command.choice_argument
+        else {
+            panic!("expected a generic choice argument");
+        };
+        assert_eq!(argument, &json!({ "credentialOfferCid": "00bb" }));
     }
 
     #[test]
