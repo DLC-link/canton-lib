@@ -27,6 +27,8 @@ pub struct Claim {
 #[derive(Debug, Clone)]
 pub struct CredentialOffer {
     pub contract_id: String,
+    /// Template id of the created event. It pins the package version, so
+    /// commands use the package-name form (`#<package-name>:...`) instead.
     pub template_id: String,
     pub created_event_blob: String,
     pub issuer: String,
@@ -101,6 +103,8 @@ impl CredentialOffer {
 #[derive(Debug, Clone)]
 pub struct UserCredential {
     pub contract_id: String,
+    /// Template id of the created event. It pins the package version, so
+    /// commands use the package-name form (`#<package-name>:...`) instead.
     pub template_id: String,
     pub issuer: String,
     pub holder: String,
@@ -168,6 +172,8 @@ impl UserCredential {
 #[derive(Debug, Clone)]
 pub struct UserServiceInfo {
     pub contract_id: String,
+    /// Template id of the created event. It pins the package version, so
+    /// commands use the package-name form (`#<package-name>:...`) instead.
     pub template_id: String,
     pub operator: String,
     pub user: String,
@@ -194,7 +200,6 @@ pub struct AcceptCredentialOfferParams {
     pub party: String,
     pub access_token: String,
     pub user_service_contract_id: String,
-    pub user_service_template_id: String,
     pub credential_offer_cid: String,
 }
 
@@ -379,24 +384,39 @@ pub async fn find_user_service(params: FindUserServiceParams) -> Result<UserServ
     ))
 }
 
+/// Build the `UserService_AcceptFreeCredentialOffer` exercise.
+///
+/// The template id is the package-name form, so the participant resolves it
+/// to the highest `utility-credential-app-v0` version that every informee's
+/// participant has vetted. A created event's template id would pin the
+/// package the UserService was created with, and a participant that no
+/// longer vets that old package rejects the command.
+fn accept_credential_offer_command(
+    user_service_contract_id: &str,
+    credential_offer_cid: &str,
+) -> submission::ExerciseCommand {
+    submission::ExerciseCommand {
+        exercise_command: submission::ExerciseCommandData {
+            template_id: USER_SERVICE_TEMPLATE_ID.to_string(),
+            contract_id: user_service_contract_id.to_string(),
+            choice: "UserService_AcceptFreeCredentialOffer".to_string(),
+            choice_argument: submission::ChoiceArgumentsVariations::Generic(json!({
+                "credentialOfferCid": credential_offer_cid
+            })),
+        },
+    }
+}
+
 /// Accept a credential offer by exercising the UserService_AcceptFreeCredentialOffer choice
 pub async fn accept_credential_offer(
     params: AcceptCredentialOfferParams,
 ) -> Result<UserCredential, String> {
     let command_id = format!("cmd-{}", uuid::Uuid::new_v4());
 
-    let choice_argument = json!({
-        "credentialOfferCid": params.credential_offer_cid
-    });
-
-    let exercise_command = submission::ExerciseCommand {
-        exercise_command: submission::ExerciseCommandData {
-            template_id: params.user_service_template_id.clone(),
-            contract_id: params.user_service_contract_id.clone(),
-            choice: "UserService_AcceptFreeCredentialOffer".to_string(),
-            choice_argument: submission::ChoiceArgumentsVariations::Generic(choice_argument),
-        },
-    };
+    let exercise_command = accept_credential_offer_command(
+        &params.user_service_contract_id,
+        &params.credential_offer_cid,
+    );
 
     let submission_request = submission::Submission {
         act_as: vec![params.party.clone()],
@@ -563,6 +583,26 @@ mod parser_tests {
                 }
             ]
         })
+    }
+
+    #[test]
+    fn accept_exercises_user_service_by_package_name() {
+        let command = accept_credential_offer_command("00aa", "00bb");
+        assert_eq!(
+            command.exercise_command.template_id,
+            "#utility-credential-app-v0:Utility.Credential.App.V0.Service.User:UserService"
+        );
+        assert_eq!(command.exercise_command.contract_id, "00aa");
+        assert_eq!(
+            command.exercise_command.choice,
+            "UserService_AcceptFreeCredentialOffer"
+        );
+        let submission::ChoiceArgumentsVariations::Generic(argument) =
+            &command.exercise_command.choice_argument
+        else {
+            panic!("expected a generic choice argument");
+        };
+        assert_eq!(argument, &json!({ "credentialOfferCid": "00bb" }));
     }
 
     #[test]

@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — breaking
+
+- `token::credentials::accept_credential_offer` now exercises
+  `UserService_AcceptFreeCredentialOffer` with the package-name template id
+  (`#utility-credential-app-v0:...`). It used to send the template id of the
+  UserService created event, which pins the package version the UserService
+  was created with. A participant that no longer vets that old version
+  rejected the accept with `INVALID_PRESCRIBED_SYNCHRONIZER_ID`.
+  `AcceptCredentialOfferParams` loses its `user_service_template_id` field;
+  drop it at the call site.
+
+### Security
+
+- `zip` moves from 2.4.2 to 9.0.5, which closes RUSTSEC-2026-0367 and
+  RUSTSEC-2026-0368. The `token` crate only reads `META-INF/MANIFEST.MF`
+  from local DAR files and never extracts them, so the extraction bugs
+  never applied, but `cargo deny check advisories` fails on the old version.
+  The crate now enables only the `deflate-flate2-zlib-rs` feature of `zip`,
+  because DARs use deflate and the other default features pull in unused
+  dependencies.
+
 ## [0.11.0] - 2026-10-08
 
 ### Changed
