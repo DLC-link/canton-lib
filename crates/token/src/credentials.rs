@@ -27,6 +27,8 @@ pub struct Claim {
 #[derive(Debug, Clone)]
 pub struct CredentialOffer {
     pub contract_id: String,
+    /// Template id of the created event. It pins the package version, so
+    /// commands use the package-name form (`#<package-name>:...`) instead.
     pub template_id: String,
     pub created_event_blob: String,
     pub issuer: String,
@@ -101,6 +103,8 @@ impl CredentialOffer {
 #[derive(Debug, Clone)]
 pub struct UserCredential {
     pub contract_id: String,
+    /// Template id of the created event. It pins the package version, so
+    /// commands use the package-name form (`#<package-name>:...`) instead.
     pub template_id: String,
     pub issuer: String,
     pub holder: String,
@@ -168,6 +172,8 @@ impl UserCredential {
 #[derive(Debug, Clone)]
 pub struct UserServiceInfo {
     pub contract_id: String,
+    /// Template id of the created event. It pins the package version, so
+    /// commands use the package-name form (`#<package-name>:...`) instead.
     pub template_id: String,
     pub operator: String,
     pub user: String,
