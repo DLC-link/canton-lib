@@ -6,6 +6,7 @@ syntax = "proto3";
 package com.digitalasset.canton.protocol.v32;
 
 import "com/digitalasset/canton/crypto/v30/crypto.proto";
+import "com/digitalasset/canton/protocol/v30/common.proto";
 import "com/digitalasset/canton/protocol/v30/participant_transaction.proto";
 import "com/digitalasset/canton/protocol/v31/participant_transaction.proto";
 import "scalapb/scalapb.proto";
@@ -14,7 +15,7 @@ import "scalapb/scalapb.proto";
 
 // Compared to v31: HashingSchemeVersion V4 enum added for development-version prepared transactions.
 message ExternalAuthorization {
-  option (scalapb.message).companion_extends = "com.digitalasset.canton.version.AlphaProtoVersion";
+  option (scalapb.message).companion_extends = "com.digitalasset.canton.version.StableProtoVersion";
 
   // The hashing scheme version used when building the hash
   enum HashingSchemeVersion {
@@ -36,7 +37,7 @@ message ExternalAuthorization {
 
 // Compared to v31: external authorization can carry HashingSchemeVersion V4.
 message SubmitterMetadata {
-  option (scalapb.message).companion_extends = "com.digitalasset.canton.version.AlphaProtoVersion";
+  option (scalapb.message).companion_extends = "com.digitalasset.canton.version.StableProtoVersion";
 
   com.digitalasset.canton.crypto.v30.Salt salt = 1;
   repeated string act_as = 2;
@@ -53,7 +54,7 @@ message SubmitterMetadata {
 }
 
 message ViewExternalCallResult {
-  option (scalapb.message).companion_extends = "com.digitalasset.canton.version.AlphaProtoVersion";
+  option (scalapb.message).companion_extends = "com.digitalasset.canton.version.StableProtoVersion";
 
   string extension_id = 1;
   string function_id = 2;
@@ -74,7 +75,7 @@ message ViewExternalCallResult {
 // - rolled_back boolean added
 // - created_core references v31 structure
 message ViewParticipantData {
-  option (scalapb.message).companion_extends = "com.digitalasset.canton.version.AlphaProtoVersion";
+  option (scalapb.message).companion_extends = "com.digitalasset.canton.version.StableProtoVersion";
 
   com.digitalasset.canton.crypto.v30.Salt salt = 1;
   repeated v30.InputContract core_inputs = 2;
@@ -82,7 +83,32 @@ message ViewParticipantData {
   repeated string created_in_subview_archived_in_core = 4; // ids of contracts created in a subview and archived in the core
   repeated v31.ViewParticipantData.KeyResolutionWithMaintainers resolved_keys = 5;
   v31.ActionDescription action_description = 6;
-  reserved 7; // was rollback_context
-  repeated ViewExternalCallResult external_call_results = 8;
-  bool rolled_back = 9;
+  repeated ViewExternalCallResult external_call_results = 7;
+  bool rolled_back = 8;
+}
+
+// Semantically identical to v31, with one difference: the bytes in compressed_view_trees
+// are produced using a different compression algorithm. The v31 version uses gzip, while
+// this v32 version uses Zstandard (zstd) for improved compression ratio and speed.
+message EncryptedMultipleViewsMessage {
+  option (scalapb.message).companion_extends = "com.digitalasset.canton.version.StableProtoVersion";
+
+  // A wrapper for a collection of view trees (serialized, uncompressed)
+  message UncompressedViewTrees {
+    repeated bytes view_trees = 1;
+  }
+
+  // Bytes containing the result of compressing the UncompressedViewTrees instance
+  bytes compressed_view_trees = 1;
+
+  repeated bytes view_hashes = 2;
+
+  // The symmetric encryption scheme used to encrypt the view tree and the session key
+  com.digitalasset.canton.crypto.v30.SymmetricKeyScheme encryption_scheme = 3;
+
+  com.digitalasset.canton.crypto.v30.Signature submitting_participant_signature = 4; // optional
+
+  repeated com.digitalasset.canton.crypto.v30.AsymmetricEncrypted session_key_lookup = 5;
+  string physical_synchronizer_id = 6;
+  v30.ViewType view_type = 7;
 }

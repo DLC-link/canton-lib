@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — breaking
+
+- `ledgrpc` now vendors the protos of Canton 3.6.4, which Splice 0.9.4
+  runs. They replace the Canton 3.5.11 set. Each root is still copied whole
+  from its upstream module, as in #28.
+- `crypto::v31` is removed, because Canton 3.6 drops that package.
+- `protocol::v30` loses the synchronizer-internal messages that Canton
+  dropped: `Envelope`, `Batch`, `SequencedEvent`, `SubmissionRequest`,
+  `SubmitterMetadata`, `EncryptedViewMessage` and `ExternalAuthorization`.
+  `protocol::v31` loses `NamespaceDelegation`, `OwnerToKeyMapping` and
+  `PartyToKeyMapping`.
+- `SignedTopologyTransactions::signed_transaction` is renamed to
+  `signed_transactions`. The field number stays the same, so the wire
+  format does not change.
+- The Ledger API `PartyManagementAlphaService` loses `ExportPartyAcs` and
+  `AddPartyWithAcs`. The Admin API `PartyManagementService` gains
+  `AddPartyWithAcsAsync` and `GetAddPartyStatus`. The Admin API
+  `ExportPartyAcs` and `ImportPartyAcs` keep their messages and only gain
+  fields.
+- The participant messages `PartyReplicationSourceParticipantMessage` and
+  `PartyReplicationTargetParticipantMessage` are renamed to
+  `AcsReplicationSourceParticipantMessage` and
+  `AcsReplicationTargetParticipantMessage`.
+
+### Added
+
+- The topology read and write services accept and return a `v31` mapping
+  next to `v30`. Canton marks the `v31` topology messages alpha, so a
+  synchronizer on a stable protocol version still uses `v30`.
+- New RPCs include `StateService::ConvertRecordTimeToOffset`,
+  `TopologyManagerReadService::GenerateOnboardingTopologyTransactions`, and
+  the digest consistency checks on `ParticipantRepairService`.
+
 ## [0.12.0] - 2026-10-20
 
 ### Fixed — breaking
