@@ -9,6 +9,7 @@ import "com/daml/ledger/api/v2/event.proto";
 import "com/daml/ledger/api/v2/offset_checkpoint.proto";
 import "com/daml/ledger/api/v2/reassignment.proto";
 import "com/daml/ledger/api/v2/transaction_filter.proto";
+import "google/protobuf/timestamp.proto";
 
 option csharp_namespace = "Com.Daml.Ledger.Api.V2";
 option java_outer_classname = "StateServiceOuterClass";
@@ -21,6 +22,10 @@ service StateService {
   // the client SHOULD begin streaming updates from the update service,
   // starting at the GetActiveContractsRequest.active_at_offset specified in this request.
   // Clients SHOULD NOT assume that the set of active contracts they receive reflects the state at the ledger end.
+  // If the given offset is different than the ledger end, and there are (un)assignments in-flight at the given offset,
+  // the snapshot may fail with "FAILED_PRECONDITION/PARTICIPANT_PRUNED_DATA_ACCESSED".
+  // Note that it is ok to request acs snapshots for party migration with offsets other than ledger end, because party
+  // migration is not concerned with incomplete (un)assignments.
   rpc GetActiveContracts(GetActiveContractsRequest) returns (stream GetActiveContractsResponse);
 
   // Returns a page of the snapshot of the active contracts and incomplete (un)assignments at a ledger offset.
@@ -39,12 +44,17 @@ service StateService {
 
   // Get the latest successfully pruned ledger offsets
   rpc GetLatestPrunedOffsets(GetLatestPrunedOffsetsRequest) returns (GetLatestPrunedOffsetsResponse);
+
+  // Translate syncrhonizer record time to an offset
+  // If the requested record time is earlier that the earliest record time known for the given synchronizer
+  // (either because is is before the connection to the synchronizer was established or because it was already pruned),
+  // the request fails with RECORD_TIME_NOT_FOUND error.
+  // If the requested record time is after the latest record time observed for this synchronizer, the request fails with
+  // RECORD_TIME_NOT_OBSERVED_YET error code. This may be transitional condition until participant node catches up with most recent synchronizer updates.
+  // In such case the caller may retry this request.
+  rpc ConvertRecordTimeToOffset(ConvertRecordTimeToOffsetRequest) returns (ConvertRecordTimeToOffsetResponse);
 }
 
-// If the given offset is different than the ledger end, and there are (un)assignments in-flight at the given offset,
-// the snapshot may fail with "FAILED_PRECONDITION/PARTICIPANT_PRUNED_DATA_ACCESSED".
-// Note that it is ok to request acs snapshots for party migration with offsets other than ledger end, because party
-// migration is not concerned with incomplete (un)assignments.
 message GetActiveContractsRequest {
   reserved 1;
   reserved "filter";
@@ -195,11 +205,12 @@ message ActiveContract {
   // Required
   string synchronizer_id = 2;
 
-  // Each corresponding assigned and unassigned event has the same reassignment_counter. This strictly increases
-  // with each unassign command for the same contract. Creation of the contract corresponds to reassignment_counter
-  // equals zero.
-  // This field will be the reassignment_counter of the latest observable activation event on this synchronizer, which is
-  // before the active_at_offset.
+  // The reassignment counter of this event.
+  //
+  // Reassignment counters strictly increase with each unassign command for the same contract. Creation
+  // of the contract corresponds to a reassignment_counter equal to zero.
+  // This field will be the reassignment_counter of the latest observable activation event on this synchronizer,
+  // which is before the active_at_offset.
   //
   // Required
   uint64 reassignment_counter = 3;
@@ -283,7 +294,15 @@ enum ParticipantPermission {
   PARTICIPANT_PERMISSION_OBSERVATION = 3;
 }
 
-message GetLedgerEndRequest {}
+message GetLedgerEndRequest {
+  // Provide synchronizer_times for the specified synchronizers in the response.
+  // If none are specified, only offset will be present in the response.
+  // If the request includes a synchronizer for which no updates were observed, it will be omitted in the output.
+  // If the request includes a synchronizer that participant was never connected to, it will be omitted in the output.
+  //
+  // Optional: can be empty
+  repeated string synchronizer_id = 1;
+}
 
 message GetLedgerEndResponse {
   // It will always be a non-negative integer.
@@ -293,7 +312,7 @@ message GetLedgerEndResponse {
   // Optional
   int64 offset = 1;
 
-  // Final record times observed by this participant for each of the sequencers that were ever connected.
+  // Final record times observed by this participant for each of the requested synchronizers.
   // If there is no connection to a sequencer, corresponding record time can be arbitrarily far back in the past.
   //
   // Optional: can be empty
@@ -322,4 +341,24 @@ message GetLatestPrunedOffsetsResponse {
   //
   // Optional
   int64 all_divulged_contracts_pruned_up_to_inclusive = 2;
+}
+
+message ConvertRecordTimeToOffsetRequest {
+  // The record time to be converted to an offset
+  // Required
+  google.protobuf.Timestamp record_time = 1;
+
+  // The ID of the synchronizer
+  // Must be a synchronizer from which the participant had received at least one update ever.
+  //
+  // Required
+  string synchronizer_id = 2;
+}
+
+message ConvertRecordTimeToOffsetResponse {
+  // The participant's offset, the details of the offset field are described in ``community/ledger-api/README.md``.
+  // Must be a valid absolute offset (positive integer).
+  //
+  // Required
+  int64 offset = 1;
 }

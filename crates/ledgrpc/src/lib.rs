@@ -116,10 +116,6 @@ pub mod com {
                     tonic::include_proto!("com.digitalasset.canton.crypto.v30");
                 }
 
-                pub mod v31 {
-                    tonic::include_proto!("com.digitalasset.canton.crypto.v31");
-                }
-
                 pub mod admin {
                     pub mod v30 {
                         tonic::include_proto!("com.digitalasset.canton.crypto.admin.v30");
