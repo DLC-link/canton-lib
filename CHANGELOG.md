@@ -23,11 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `protocol::v30` `StaticSynchronizerParameters` variant. They add a
   `protocol::v33` variant under a new field number. The `v31` and `v32`
   variants stay.
-- The sequencer admin `v30` package replaces the `OnboardingState` and
-  `InitializeSequencerFromOnboardingState` RPCs with `OnboardingStateV2` and
-  `InitializeSequencerFromOnboardingStateV2`, in the same package. The new
-  `sequencer::admin::v31` package holds only payload messages, such as
-  `OnboardingStateForSequencerV2` and `SequencerSnapshot`.
+- The sequencer admin `v30` package loses the `OnboardingState` and
+  `InitializeSequencerFromOnboardingState` RPCs. Callers move to
+  `OnboardingStateV2` and `InitializeSequencerFromOnboardingStateV2`, which
+  the same package already has. The new `sequencer::admin::v31` package
+  holds only payload messages, such as `OnboardingStateForSequencerV2` and
+  `SequencerSnapshot`.
 - The Admin API `PartyManagementService` moves `AcsReplicationStatus` to the
   top level.
 - `crypto::v31` is removed, because Canton 3.6 drops that package.
