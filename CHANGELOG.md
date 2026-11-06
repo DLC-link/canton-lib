@@ -17,12 +17,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `v30::TopologyMapping`, so `v31` bytes from Canton 3.6 do not decode.
 - `protocol::v31` loses `SubmitterMetadata`, `ExternalAuthorization`,
   `CompressedBatch`, `SequencedEvent`, `SubmissionRequest` and
-  `EnvelopeContent`. Their successors are in the new `protocol::v33`.
-- `StaticSynchronizerParameters` moves to `protocol::v33` in the sequencer
-  connect and initialization messages, under a new field number.
-- The sequencer admin `v30` package loses `OnboardingState` and
-  `InitializeSequencerFromOnboardingState`. The new `sequencer::admin::v31`
-  package holds their successors.
+  `EnvelopeContent`. Their successors are in `protocol::v32`.
+  `SubmissionRequest` also has a newer form in the new `protocol::v33`.
+- The sequencer connect and initialization messages drop their
+  `protocol::v30` `StaticSynchronizerParameters` variant. They add a
+  `protocol::v33` variant under a new field number. The `v31` and `v32`
+  variants stay.
+- The sequencer admin `v30` package replaces the `OnboardingState` and
+  `InitializeSequencerFromOnboardingState` RPCs with `OnboardingStateV2` and
+  `InitializeSequencerFromOnboardingStateV2`, in the same package. The new
+  `sequencer::admin::v31` package holds only payload messages, such as
+  `OnboardingStateForSequencerV2` and `SequencerSnapshot`.
 - The Admin API `PartyManagementService` moves `AcsReplicationStatus` to the
   top level.
 - `crypto::v31` is removed, because Canton 3.6 drops that package.
