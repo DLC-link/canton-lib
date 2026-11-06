@@ -9,9 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed — breaking
 
-- `ledgrpc` now vendors the protos of Canton 3.6.4, which Splice 0.9.4
-  runs. They replace the Canton 3.5.11 set. Each root is still copied whole
-  from its upstream module, as in #28.
+- `ledgrpc` now vendors the protos of Canton 3.7.1, which Splice 0.10.0
+  runs. They replace the Canton 3.5.11 set, by way of an unreleased 3.6.4
+  sync. Each root is still copied whole from its upstream module, as in #28.
+- Canton 3.7 makes the `v31` topology messages stable for protocol version
+  37. `v31::TopologyMapping` now uses the same field numbers as
+  `v30::TopologyMapping`, so `v31` bytes from Canton 3.6 do not decode.
+- `protocol::v31` loses `SubmitterMetadata`, `ExternalAuthorization`,
+  `CompressedBatch`, `SequencedEvent`, `SubmissionRequest` and
+  `EnvelopeContent`. Their successors are in `protocol::v32`.
+  `SubmissionRequest` also has a newer form in the new `protocol::v33`.
+- The sequencer connect and initialization messages drop their
+  `protocol::v30` `StaticSynchronizerParameters` variant. They add a
+  `protocol::v33` variant under a new field number. The `v31` and `v32`
+  variants stay.
+- The sequencer admin `v30` package loses the `OnboardingState` and
+  `InitializeSequencerFromOnboardingState` RPCs. Callers move to
+  `OnboardingStateV2` and `InitializeSequencerFromOnboardingStateV2`, which
+  the same package already has. The new `sequencer::admin::v31` package
+  holds only payload messages, such as `OnboardingStateForSequencerV2` and
+  `SequencerSnapshot`.
+- The Admin API `PartyManagementService` moves `AcsReplicationStatus` to the
+  top level.
 - `crypto::v31` is removed, because Canton 3.6 drops that package.
 - `protocol::v30` loses the synchronizer-internal messages that Canton
   dropped: `Envelope`, `Batch`, `SequencedEvent`, `SubmissionRequest`,
@@ -34,8 +53,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - The topology read and write services accept and return a `v31` mapping
-  next to `v30`. Canton marks the `v31` topology messages alpha, so a
-  synchronizer on a stable protocol version still uses `v30`.
+  next to `v30`. A synchronizer on protocol version 37 uses `v31`, and one
+  on 36 or lower still uses `v30`.
+- `AuthorizeRequest` gains an optional `protocol_version`. On a protocol
+  version 37 synchronizer, a client can set 36 to get a `v30` transaction.
+  The new force flag `FORCE_FLAG_ALLOW_V30_PARTY_TO_PARTICIPANT_AFTER_HOSTING_STATES`
+  goes with it.
+- The Admin API `PartyManagementService` gains `GetAcsReplicationStatus`.
 - New RPCs include `StateService::ConvertRecordTimeToOffset`,
   `TopologyManagerReadService::GenerateOnboardingTopologyTransactions`, and
   the digest consistency checks on `ParticipantRepairService`.

@@ -159,12 +159,20 @@ pub mod com {
                 pub mod v32 {
                     tonic::include_proto!("com.digitalasset.canton.protocol.v32");
                 }
+
+                pub mod v33 {
+                    tonic::include_proto!("com.digitalasset.canton.protocol.v33");
+                }
             }
 
             pub mod sequencer {
                 pub mod admin {
                     pub mod v30 {
                         tonic::include_proto!("com.digitalasset.canton.sequencer.admin.v30");
+                    }
+
+                    pub mod v31 {
+                        tonic::include_proto!("com.digitalasset.canton.sequencer.admin.v31");
                     }
                 }
 
