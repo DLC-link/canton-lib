@@ -314,6 +314,7 @@ pub async fn submit_sequential_chained(
         Some(registry_response) => registry_response,
         None => {
             let execute_before_hours = 30 * 24; // 30 days
+            let now = jiff::Timestamp::now();
 
             // Create a template transfer to fetch registry context
             let template_transfer = common::transfer::Transfer {
@@ -321,10 +322,9 @@ pub async fn submit_sequential_chained(
                 receiver: params.recipients[0].receiver.clone(),
                 amount: params.recipients[0].amount,
                 instrument_id: params.instrument_id.clone(),
-                requested_at: chrono::Utc::now().to_rfc3339(),
-                execute_before: (chrono::Utc::now()
-                    + chrono::Duration::hours(execute_before_hours))
-                .to_rfc3339(),
+                requested_at: now.to_string(),
+                execute_before: (now + jiff::SignedDuration::from_hours(execute_before_hours))
+                    .to_string(),
                 input_holding_cids: Some(params.initial_holding_cids.clone()),
                 meta: Some(crate::utils::chained_transfer_meta(None)),
             };
@@ -428,13 +428,14 @@ pub async fn submit_sequential_chained(
         }
 
         // Build transfer on-the-fly for this recipient
+        let now = jiff::Timestamp::now();
         let transfer = common::transfer::Transfer {
             sender: params.sender.clone(),
             receiver: recipient.receiver.clone(),
             amount: recipient.amount,
             instrument_id: params.instrument_id.clone(),
-            requested_at: chrono::Utc::now().to_rfc3339(),
-            execute_before: (chrono::Utc::now() + chrono::Duration::hours(168)).to_rfc3339(),
+            requested_at: now.to_string(),
+            execute_before: (now + jiff::SignedDuration::from_hours(168)).to_string(),
             input_holding_cids: Some(current_holding_cids.clone()),
             meta: Some(crate::utils::chained_transfer_meta(
                 transfer_reference.as_deref(),
@@ -983,16 +984,16 @@ pub mod v2 {
             Some(registry_response) => registry_response,
             None => {
                 let execute_before_hours = 30 * 24; // 30 days
+                let now = jiff::Timestamp::now();
 
                 let template_transfer = common::transfer::v2::Transfer {
                     sender: params.sender.clone(),
                     receiver: params.recipients[0].receiver.clone(),
                     amount: params.recipients[0].amount,
                     instrument_id: params.instrument_id.clone(),
-                    requested_at: chrono::Utc::now().to_rfc3339(),
-                    execute_before: (chrono::Utc::now()
-                        + chrono::Duration::hours(execute_before_hours))
-                    .to_rfc3339(),
+                    requested_at: now.to_string(),
+                    execute_before: (now + jiff::SignedDuration::from_hours(execute_before_hours))
+                        .to_string(),
                     input_holding_cids: Some(params.initial_holding_cids.clone()),
                     meta: Some(crate::utils::chained_transfer_meta(None)),
                 };
@@ -1100,13 +1101,14 @@ pub mod v2 {
                 transfer_reference = Some(unique_ref.clone());
             }
 
+            let now = jiff::Timestamp::now();
             let transfer = common::transfer::v2::Transfer {
                 sender: params.sender.clone(),
                 receiver: recipient.receiver.clone(),
                 amount: recipient.amount,
                 instrument_id: params.instrument_id.clone(),
-                requested_at: chrono::Utc::now().to_rfc3339(),
-                execute_before: (chrono::Utc::now() + chrono::Duration::hours(168)).to_rfc3339(),
+                requested_at: now.to_string(),
+                execute_before: (now + jiff::SignedDuration::from_hours(168)).to_string(),
                 input_holding_cids: Some(current_holding_cids.clone()),
                 meta: Some(crate::utils::chained_transfer_meta(
                     transfer_reference.as_deref(),
@@ -1208,6 +1210,7 @@ mod chained_result_tests {
     //! serve. These tests drive the function that computes the value.
 
     use super::*;
+    use crate::test_utils::stub;
     use crate::utils::test_fixtures::{exercised_event_value, transaction_response};
     use wiremock::matchers::{method, path, path_regex};
     use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -1311,6 +1314,7 @@ mod chained_result_tests {
         .await
         .expect("the stub answers Keycloak");
 
+        let start = stub::now();
         let result = submit_sequential_chained(
             SequentialChainedParams {
                 recipients: recipients(),
@@ -1331,6 +1335,7 @@ mod chained_result_tests {
         )
         .await
         .expect("the batch ran");
+        let end = stub::now();
 
         assert_eq!(result.successful_count, 1);
         assert_eq!(result.failed_count, 1);
@@ -1351,6 +1356,91 @@ mod chained_result_tests {
             "the failure must name itself: {:?}",
             result.results[1].error
         );
+
+        assert_windows(&server, start, end).await;
+    }
+
+    /// The template transfer that fetches the registry context stays open
+    /// for 30 days. Each transfer the batch submits stays open for a week.
+    async fn assert_windows(server: &MockServer, start: stub::Instant, end: stub::Instant) {
+        let requests = server
+            .received_requests()
+            .await
+            .expect("wiremock records requests by default");
+        let body = |request: &wiremock::Request| -> serde_json::Value {
+            serde_json::from_slice(&request.body).expect("a request body must be JSON")
+        };
+
+        let factory: Vec<_> = requests
+            .iter()
+            .filter(|r| r.url.path().ends_with("/transfer-factory"))
+            .collect();
+        assert_eq!(factory.len(), 1, "the batch fetches the context once");
+        stub::assert_window(
+            &body(factory[0])["choiceArguments"]["transfer"],
+            stub::hours(30 * 24),
+            start,
+            end,
+        );
+
+        let submits: Vec<_> = requests
+            .iter()
+            .filter(|r| r.url.path() == stub::SUBMIT_PATH)
+            .collect();
+        assert_eq!(submits.len(), 2, "one submission per recipient");
+        for submit in submits {
+            let command = &body(submit)["commands"]["commands"][0]["ExerciseCommand"];
+            stub::assert_window(
+                &command["choiceArgument"]["transfer"],
+                stub::hours(168),
+                start,
+                end,
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn a_v2_batch_uses_the_same_windows() {
+        let server = server_with_one_failure().await;
+        let mut token_state = TokenState::new(
+            "test-user".to_string(),
+            "test-password".to_string(),
+            "test-client".to_string(),
+            format!("{}/token", server.uri()),
+        )
+        .await
+        .expect("the stub answers Keycloak");
+
+        let start = stub::now();
+        let _ = v2::submit_sequential_chained(
+            v2::SequentialChainedParams {
+                recipients: recipients()
+                    .into_iter()
+                    .map(|r| v2::Recipient {
+                        receiver: common::transfer::v2::Account::basic(&r.receiver),
+                        amount: r.amount,
+                        reference: r.reference,
+                    })
+                    .collect(),
+                sender: common::transfer::v2::Account::basic(SENDER),
+                instrument_id: common::instrument::InstrumentId {
+                    admin: ADMIN.to_string(),
+                    id: "CBTC".to_string(),
+                },
+                initial_holding_cids: vec!["00start".to_string()],
+                ledger_host: server.uri(),
+                registry_url: server.uri(),
+                decentralized_party_id: ADMIN.to_string(),
+                reference_base: None,
+                on_transfer_complete: None,
+                registry_response: None,
+            },
+            &mut token_state,
+        )
+        .await;
+        let end = stub::now();
+
+        assert_windows(&server, start, end).await;
     }
 }
 

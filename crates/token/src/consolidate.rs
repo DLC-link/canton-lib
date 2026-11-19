@@ -3,7 +3,6 @@ use crate::holding::Holding;
 use common::decimal::DamlDecimal;
 use ledger::models::JsSubmitAndWaitForTransactionResponse;
 use std::collections::{HashMap, HashSet};
-use std::ops::Add;
 
 /// Result of a consolidation operation
 #[derive(Debug)]
@@ -194,22 +193,13 @@ pub async fn consolidate_utxos(params: ConsolidateParams) -> Result<Vec<String>,
         return Err("Total amount to consolidate is zero".to_string());
     }
 
-    // Create metadata with the MergeSplit transaction kind
-    let transfer_meta = crate::utils::merge_split_meta("UTXO consolidation");
-
-    // Create a self-transfer to consolidate (sender == receiver)
-    let transfer = common::transfer::Transfer {
-        sender: params.party.clone(),
-        receiver: params.party.clone(), // Self-transfer triggers consolidation
-        amount: total_amount,
-        instrument_id: params.instrument_id,
-        requested_at: chrono::Utc::now().to_rfc3339(),
-        execute_before: chrono::Utc::now()
-            .add(chrono::Duration::hours(5))
-            .to_rfc3339(),
-        input_holding_cids: Some(input_holding_cids),
-        meta: Some(transfer_meta),
-    };
+    let transfer = crate::split::self_transfer(
+        &params.party,
+        total_amount,
+        params.instrument_id,
+        input_holding_cids,
+        "UTXO consolidation",
+    );
 
     // Get registry information for the transfer
     let additional_information =

@@ -12,8 +12,8 @@ serde_json = { workspace = true }
 common = { workspace = true }
 
 [dev-dependencies]
-chrono = { workspace = true }
 dotenvy = { workspace = true }
+jiff = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 
 wiremock = { workspace = true }

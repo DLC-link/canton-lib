@@ -53,7 +53,7 @@ pub struct SendParams {
     /// Stored in the transfer's metadata when given.
     pub reference: Option<String>,
     /// Bounds how long the offer stays acceptable; one week when `None`.
-    pub execute_before: Option<chrono::Duration>,
+    pub execute_before: Option<std::time::Duration>,
     /// Holdings that fund the transfer; the registry selects them when `None`.
     pub input_holding_cids: Option<Vec<String>>,
 }
@@ -205,12 +205,15 @@ impl TokenClient {
             }
         });
 
-        let requested_at = chrono::Utc::now().to_rfc3339();
-        let execute_before = (chrono::Utc::now()
-            + params
-                .execute_before
-                .unwrap_or(chrono::Duration::hours(168)))
-        .to_rfc3339();
+        let now = jiff::Timestamp::now();
+        let open_for = params
+            .execute_before
+            .unwrap_or(std::time::Duration::from_secs(168 * 3600));
+        let requested_at = now.to_string();
+        let execute_before = now
+            .checked_add(open_for)
+            .map_err(|e| format!("execute_before {open_for:?} is out of range: {e}"))?
+            .to_string();
 
         match self.config.version {
             common::TokenStandardVersion::V1 => {
@@ -561,6 +564,7 @@ impl TokenClient {
 #[cfg(test)]
 mod dispatch_tests {
     use super::*;
+    use crate::test_utils::stub;
     use wiremock::matchers::{method, path, path_regex};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -751,10 +755,12 @@ mod dispatch_tests {
     #[tokio::test]
     async fn send_dispatches_to_the_v1_factory() {
         let server = stub().await;
+        let start = stub::now();
         let _ = client(&server, common::TokenStandardVersion::V1)
             .await
             .send(send_params())
             .await;
+        let end = stub::now();
 
         let (path, body) = registry_call(&server).await;
         assert!(
@@ -765,15 +771,40 @@ mod dispatch_tests {
         assert_eq!(args["expectedAdmin"], serde_json::json!(ADMIN));
         assert_eq!(args["transfer"]["sender"], serde_json::json!(PARTY));
         assert!(args["actors"].is_null(), "V1 has no actors field");
+        stub::assert_window(&args["transfer"], stub::hours(168), start, end);
+    }
+
+    #[tokio::test]
+    async fn send_keeps_the_offer_open_for_the_given_duration() {
+        let server = stub().await;
+        let start = stub::now();
+        let _ = client(&server, common::TokenStandardVersion::V1)
+            .await
+            .send(SendParams {
+                execute_before: Some(std::time::Duration::from_secs(2 * 3600)),
+                ..send_params()
+            })
+            .await;
+        let end = stub::now();
+
+        let (_, body) = registry_call(&server).await;
+        stub::assert_window(
+            &body["choiceArguments"]["transfer"],
+            stub::hours(2),
+            start,
+            end,
+        );
     }
 
     #[tokio::test]
     async fn send_dispatches_to_the_v2_factory() {
         let server = stub().await;
+        let start = stub::now();
         let _ = client(&server, common::TokenStandardVersion::V2)
             .await
             .send(send_params())
             .await;
+        let end = stub::now();
 
         let (path, body) = registry_call(&server).await;
         assert!(
@@ -796,6 +827,7 @@ mod dispatch_tests {
             args["transfer"]["receiver"],
             serde_json::json!({ "owner": "bob::1220cd", "provider": null, "id": "" })
         );
+        stub::assert_window(&args["transfer"], stub::hours(168), start, end);
 
         // The registry body above is only half the call. Read the ledger
         // command back too, so the factory path gets the same cover the
@@ -813,10 +845,12 @@ mod dispatch_tests {
     #[tokio::test]
     async fn split_dispatches_to_the_v1_factory() {
         let server = stub().await;
+        let start = stub::now();
         let _ = client(&server, common::TokenStandardVersion::V1)
             .await
             .split(split_params())
             .await;
+        let end = stub::now();
 
         let (path, body) = registry_call(&server).await;
         assert!(path.contains("/transfer-instruction/v1/"), "{path}");
@@ -824,15 +858,23 @@ mod dispatch_tests {
             body["choiceArguments"]["transfer"]["sender"],
             serde_json::json!(PARTY)
         );
+        stub::assert_window(
+            &body["choiceArguments"]["transfer"],
+            stub::hours(5),
+            start,
+            end,
+        );
     }
 
     #[tokio::test]
     async fn split_dispatches_to_the_v2_factory_as_a_self_transfer() {
         let server = stub().await;
+        let start = stub::now();
         let _ = client(&server, common::TokenStandardVersion::V2)
             .await
             .split(split_params())
             .await;
+        let end = stub::now();
 
         let (path, body) = registry_call(&server).await;
         assert!(path.contains("/transfer-instruction/v2/"), "{path}");
@@ -841,6 +883,7 @@ mod dispatch_tests {
             transfer["sender"], transfer["receiver"],
             "the registry detects a merge-split by comparing whole accounts"
         );
+        stub::assert_window(transfer, stub::hours(5), start, end);
 
         let submitted = crate::test_utils::stub::submitted(&server).await;
         assert_eq!(

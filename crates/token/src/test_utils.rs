@@ -233,6 +233,44 @@ pub(crate) mod stub {
 
     pub(crate) const SUBMIT_PATH: &str = "/v2/commands/submit-and-wait-for-transaction";
 
+    pub(crate) type Instant = jiff::Timestamp;
+
+    pub(crate) fn now() -> Instant {
+        jiff::Timestamp::now()
+    }
+
+    fn parse(field: &str, value: &serde_json::Value) -> Instant {
+        let text = value
+            .as_str()
+            .unwrap_or_else(|| panic!("{field} must be a string, got {value}"));
+        text.parse()
+            .unwrap_or_else(|e| panic!("{field} {text:?} is not RFC 3339: {e}"))
+    }
+
+    /// Asserts that a serialized transfer was requested between `start` and
+    /// `end`, and that it stays open for `ttl` from its request.
+    pub(crate) fn assert_window(
+        transfer: &serde_json::Value,
+        ttl: std::time::Duration,
+        start: Instant,
+        end: Instant,
+    ) {
+        let requested_at = parse("requestedAt", &transfer["requestedAt"]);
+        let execute_before = parse("executeBefore", &transfer["executeBefore"]);
+        assert!(
+            start <= requested_at && requested_at <= end,
+            "requestedAt {requested_at} must fall within the call, {start} to {end}"
+        );
+        assert!(
+            start + ttl <= execute_before && execute_before <= end + ttl,
+            "executeBefore {execute_before} must be requestedAt plus {ttl:?}"
+        );
+    }
+
+    pub(crate) fn hours(count: u64) -> std::time::Duration {
+        std::time::Duration::from_secs(count * 3600)
+    }
+
     /// What the run actually sent, read back off the stub.
     pub(crate) struct Submitted {
         pub(crate) choice: String,

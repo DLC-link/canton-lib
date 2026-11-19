@@ -1,6 +1,5 @@
 use ledger::models::JsSubmitAndWaitForTransactionResponse;
 use std::collections::HashMap;
-use std::ops::Add;
 
 pub struct Params {
     pub party: String,
@@ -60,6 +59,27 @@ impl From<Error> for String {
     }
 }
 
+/// A self-transfer, which the registry reads as a merge-split.
+pub(crate) fn self_transfer(
+    party: &str,
+    amount: common::decimal::DamlDecimal,
+    instrument_id: common::instrument::InstrumentId,
+    input_holding_cids: Vec<String>,
+    reason: &str,
+) -> common::transfer::Transfer {
+    let now = jiff::Timestamp::now();
+    common::transfer::Transfer {
+        sender: party.to_string(),
+        receiver: party.to_string(),
+        amount,
+        instrument_id,
+        requested_at: now.to_string(),
+        execute_before: (now + jiff::SignedDuration::from_hours(5)).to_string(),
+        input_holding_cids: Some(input_holding_cids),
+        meta: Some(crate::utils::merge_split_meta(reason)),
+    }
+}
+
 /// Split a single amount using MergeSplit
 #[allow(clippy::too_many_arguments)]
 async fn split_once(
@@ -72,22 +92,13 @@ async fn split_once(
     registry_url: String,
     decentralized_party_id: String,
 ) -> Result<(String, Vec<String>), String> {
-    // Create metadata with the MergeSplit transaction kind
-    let transfer_meta = crate::utils::merge_split_meta("merge-split");
-
-    // Create a self-transfer (sender == receiver triggers MergeSplit)
-    let transfer = common::transfer::Transfer {
-        sender: party.clone(),
-        receiver: party.clone(), // Self-transfer
+    let transfer = self_transfer(
+        &party,
         amount,
         instrument_id,
-        requested_at: chrono::Utc::now().to_rfc3339(),
-        execute_before: chrono::Utc::now()
-            .add(chrono::Duration::hours(5))
-            .to_rfc3339(),
-        input_holding_cids: Some(input_holding_cids),
-        meta: Some(transfer_meta),
-    };
+        input_holding_cids,
+        "merge-split",
+    );
 
     let additional_information =
         registry::transfer_factory::get(registry::transfer_factory::Params {
@@ -308,17 +319,14 @@ pub mod v2 {
         input_holding_cids: Vec<String>,
         reason: &str,
     ) -> common::transfer::v2::Transfer {
-        use std::ops::Add;
-
+        let now = jiff::Timestamp::now();
         common::transfer::v2::Transfer {
             sender: account.clone(),
             receiver: account.clone(),
             amount,
             instrument_id,
-            requested_at: chrono::Utc::now().to_rfc3339(),
-            execute_before: chrono::Utc::now()
-                .add(chrono::Duration::hours(5))
-                .to_rfc3339(),
+            requested_at: now.to_string(),
+            execute_before: (now + jiff::SignedDuration::from_hours(5)).to_string(),
             input_holding_cids: Some(input_holding_cids),
             meta: Some(merge_split_meta(reason)),
         }
@@ -437,6 +445,7 @@ pub mod v2 {
 #[cfg(test)]
 mod v2_tests {
     use super::*;
+    use crate::test_utils::stub;
 
     fn special_account() -> common::transfer::v2::Account {
         common::transfer::v2::Account {
@@ -505,6 +514,65 @@ mod v2_tests {
             "sender and receiver must be the same account value"
         );
         assert_eq!(transfer.sender, labelled);
+    }
+
+    #[test]
+    fn v2_self_transfer_stays_open_for_five_hours() {
+        let start = stub::now();
+        let transfer = v2::self_transfer(
+            &common::transfer::v2::Account::basic("alice::1220ab"),
+            common::decimal::DamlDecimal::parse("1.0").unwrap(),
+            common::instrument::InstrumentId {
+                admin: "admin::1220ef".to_string(),
+                id: "CBTC".to_string(),
+            },
+            vec!["00abc".to_string()],
+            "merge-split",
+        );
+        let end = stub::now();
+
+        stub::assert_window(
+            &serde_json::to_value(&transfer).unwrap(),
+            stub::hours(5),
+            start,
+            end,
+        );
+    }
+}
+
+#[cfg(test)]
+mod v1_tests {
+    use super::*;
+    use crate::test_utils::stub;
+
+    #[test]
+    fn self_transfer_moves_holdings_back_to_the_party_within_five_hours() {
+        let start = stub::now();
+        let transfer = self_transfer(
+            "alice::1220ab",
+            common::decimal::DamlDecimal::parse("1.0").unwrap(),
+            common::instrument::InstrumentId {
+                admin: "admin::1220ef".to_string(),
+                id: "CBTC".to_string(),
+            },
+            vec!["00abc".to_string()],
+            "UTXO consolidation",
+        );
+        let end = stub::now();
+
+        assert_eq!(transfer.sender, "alice::1220ab");
+        assert_eq!(transfer.receiver, "alice::1220ab");
+        assert_eq!(transfer.input_holding_cids, Some(vec!["00abc".to_string()]));
+        assert_eq!(
+            serde_json::to_value(&transfer.meta).unwrap(),
+            serde_json::to_value(crate::utils::merge_split_meta("UTXO consolidation")).unwrap()
+        );
+        stub::assert_window(
+            &serde_json::to_value(&transfer).unwrap(),
+            stub::hours(5),
+            start,
+            end,
+        );
     }
 }
 

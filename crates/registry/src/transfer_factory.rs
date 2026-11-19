@@ -94,7 +94,6 @@ mod integration_tests {
     use keycloak::login::{PasswordParams, password};
     use std::collections::HashMap;
     use std::env;
-    use std::ops::Add;
 
     fn var(name: &str) -> String {
         env::var(name).unwrap_or_else(|_| panic!("{name} must be set for integration tests"))
@@ -152,10 +151,10 @@ mod integration_tests {
                             admin: decentralized_party_id,
                             id: instrument_id,
                         },
-                        requested_at: chrono::Utc::now().to_rfc3339(),
-                        execute_before: chrono::Utc::now()
-                            .add(chrono::Duration::hours(5))
-                            .to_rfc3339(),
+                        requested_at: jiff::Timestamp::now().to_string(),
+                        execute_before: (jiff::Timestamp::now()
+                            + jiff::SignedDuration::from_hours(5))
+                        .to_string(),
                         input_holding_cids: Some(input_contract_ids),
                         meta: Some(common::transfer::Meta {
                             values: Some(transfer_meta),
@@ -230,10 +229,10 @@ mod integration_tests {
                             admin: decentralized_party_id,
                             id: instrument_id,
                         },
-                        requested_at: chrono::Utc::now().to_rfc3339(),
-                        execute_before: chrono::Utc::now()
-                            .add(chrono::Duration::hours(5))
-                            .to_rfc3339(),
+                        requested_at: jiff::Timestamp::now().to_string(),
+                        execute_before: (jiff::Timestamp::now()
+                            + jiff::SignedDuration::from_hours(5))
+                        .to_string(),
                         input_holding_cids: Some(input_contract_ids),
                         meta: Some(common::transfer::Meta {
                             values: Some(transfer_meta),
