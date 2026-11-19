@@ -309,11 +309,11 @@ checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 
 [[package]]
 name = "canton-api-client"
-version = "3.6.1-0.1.0"
+version = "3.6.1-0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47e17b77ce38ae760c1b8f82f8ae8dc0d2766f16a7092d540dfcf3bf26e21f6c"
+checksum = "6b706dae3e90c4249d05d5f71e7d4eb7dfc1491445019c83a4102a3cd361a694"
 dependencies = [
- "chrono",
+ "jiff 1.0.1",
  "reqwest 0.13.3",
  "serde",
  "serde_json",
@@ -365,10 +365,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "145052bdd345b87320e369255277e3fb5152762ad123a901ef5c262dd38fe8d2"
 dependencies = [
  "iana-time-zone",
- "js-sys",
  "num-traits",
  "serde",
- "wasm-bindgen",
  "windows-link 0.2.1",
 ]
 

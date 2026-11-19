@@ -67,9 +67,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 - The workspace replaces `chrono` with `jiff`, because RUSTSEC-2026-0543
-  marks `chrono` as unmaintained. `canton-api-client` 3.6.1-0.1.0 still
-  depends on `chrono`, so `cargo deny check advisories` reports it until
-  that crate releases a version without it.
+  marks `chrono` as unmaintained. The workspace also moves to
+  `canton-api-client` 3.6.1-0.1.1, which uses `jiff` instead of `chrono`.
 
 ### Added
 
