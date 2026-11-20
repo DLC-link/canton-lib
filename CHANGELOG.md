@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-11-20
+
 ### Changed — breaking
 
 - `ledgrpc` now vendors the protos of Canton 3.7.1, which Splice 0.10.0
@@ -69,6 +71,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The workspace replaces `chrono` with `jiff`, because RUSTSEC-2026-0543
   marks `chrono` as unmaintained. The workspace also moves to
   `canton-api-client` 3.6.1-0.1.1, which uses `jiff` instead of `chrono`.
+- The lockfile moves `openssl` to 0.10.82 and `openssl-sys` to 0.9.118.
+  This closes RUSTSEC-2026-0463 and RUSTSEC-2026-0473 to RUSTSEC-2026-0479.
+  The lockfile applies only to builds of this workspace, so a consumer
+  updates `openssl` in its own lockfile.
 
 ### Added
 
