@@ -49,6 +49,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `PartyReplicationTargetParticipantMessage` are renamed to
   `AcsReplicationSourceParticipantMessage` and
   `AcsReplicationTargetParticipantMessage`.
+- `token::SendParams::execute_before` is now `Option<std::time::Duration>`
+  instead of `Option<chrono::Duration>`. `send` returns an error when the
+  duration overflows the time range. Before, the addition panicked.
+- The `wallet` mining-round fields `created_at`, `opens_at` and
+  `target_closes_at` are now `jiff::Timestamp` instead of
+  `chrono::DateTime<Utc>`. They read and write the same RFC 3339 strings.
+
+### Changed
+
+- The `token` crate writes `requestedAt` and `executeBefore` with a `Z`
+  offset and without trailing zero digits, for example
+  `2026-11-19T12:54:31.67331Z`. Before, chrono wrote
+  `2026-11-19T12:54:31.673310+00:00`. Both forms name the same instant, and
+  the registry and the Ledger API accept both.
+
+### Security
+
+- The workspace replaces `chrono` with `jiff`, because RUSTSEC-2026-0543
+  marks `chrono` as unmaintained. The workspace also moves to
+  `canton-api-client` 3.6.1-0.1.1, which uses `jiff` instead of `chrono`.
 
 ### Added
 

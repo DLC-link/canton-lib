@@ -10,8 +10,8 @@ uninlined_format_args = "allow"
 [dependencies]
 base64 = { workspace = true }
 canton-api-client = { workspace = true }
-chrono = { workspace = true }
 csv = { workspace = true }
+jiff = { workspace = true }
 log = { workspace = true }
 reqwest = { workspace = true, features = ["json"] }
 semver = { workspace = true }
