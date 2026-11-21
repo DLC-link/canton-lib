@@ -1,0 +1,14 @@
+# cargo-deny is the only RustSec advisories gate, so this is the only
+# advisory-exception list. Every ignored ID carries a `reason` that names the
+# crate that brings it in and why no fix exists.
+
+[advisories]
+version = 2
+ignore = [
+  # chrono is unmaintained (RUSTSEC-2026-0543). The advisory covers every
+  # version and names no fixed release, so no update clears it. It is a
+  # maintenance notice, not a known vulnerability.
+  # canton-api-client needs chrono, and the token and wallet crates use it
+  # directly. Drop this ignore when a maintained replacement exists.
+  { id = "RUSTSEC-2026-0543", reason = "chrono is unmaintained with no fixed release; canton-api-client, token and wallet depend on it" },
+]
