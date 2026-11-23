@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- The lockfile moves `url` to 2.5.9 and `form_urlencoded` to 1.2.3. This
+  closes RUSTSEC-2026-0592. The lockfile applies only to builds of this
+  workspace, so a consumer updates `url` in its own lockfile.
+
 ### Added
 
 - `canton-proto-rs` has a `transport` feature, on by default. It enables the
