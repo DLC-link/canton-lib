@@ -14,5 +14,6 @@ tonic-prost = { version = "0.14.2" }
 tonic-prost-build = { version = "0.14.2" }
 walkdir = { version = "2.5.0" }
 
+# Only the tonic::include_proto! code that build.rs generates uses these, and cargo-machete does not scan it.
 [package.metadata.cargo-machete]
 ignored = ["prost", "prost-types", "tonic-prost"]
