@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `common` has an `api-client` feature, on by default. It enables
   `canton-api-client` and the `filters` and `submission` modules. Turn it off
   to build the rest of `common` for `wasm32-unknown-unknown`.
+- A `Wasm` workflow checks that both crates build for
+  `wasm32-unknown-unknown` with their default features off.
 
 ## [0.13.0] - 2026-11-20
 
