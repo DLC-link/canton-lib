@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `canton-proto-rs` has a `transport` feature, on by default. It enables the
+  tonic transport and the generated `connect` constructors. Turn it off to
+  build the messages and client stubs for `wasm32-unknown-unknown`.
+
 ## [0.13.0] - 2026-11-20
 
 ### Changed — breaking
