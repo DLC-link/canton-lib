@@ -4,8 +4,15 @@ edition.workspace = true
 license.workspace = true
 version.workspace = true
 
+[features]
+default = ["api-client"]
+# `canton-api-client` pulls in tokio networking, which a
+# `wasm32-unknown-unknown` build lacks. Only `filters` and `submission`
+# use it.
+api-client = ["dep:canton-api-client"]
+
 [dependencies]
-canton-api-client = { workspace = true }
+canton-api-client = { workspace = true, optional = true }
 rust_decimal = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

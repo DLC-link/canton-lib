@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- The lockfile moves `url` to 2.5.9 and `form_urlencoded` to 1.2.3. This
+  closes RUSTSEC-2026-0592. The lockfile applies only to builds of this
+  workspace, so a consumer updates `url` in its own lockfile.
+
+### Added
+
+- `canton-proto-rs` has a `transport` feature, on by default. It enables the
+  tonic transport and the generated `connect` constructors. Turn it off to
+  build the messages and client stubs for `wasm32-unknown-unknown`.
+- `common` has an `api-client` feature, on by default. It enables
+  `canton-api-client` and the `filters` and `submission` modules. Turn it off
+  to build the rest of `common` for `wasm32-unknown-unknown`.
+- A `Wasm` workflow checks that both crates build for
+  `wasm32-unknown-unknown` with their default features off.
+
 ## [0.13.0] - 2026-11-20
 
 ### Changed — breaking

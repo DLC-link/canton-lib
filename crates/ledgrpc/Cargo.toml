@@ -4,10 +4,17 @@ edition.workspace = true
 license.workspace = true
 version = "3.4.0"
 
+[features]
+default = ["transport"]
+# The tonic transport and the generated `connect` constructors. A
+# `wasm32-unknown-unknown` build turns it off and keeps the messages and
+# client stubs.
+transport = ["tonic/transport"]
+
 [dependencies]
 prost = { version = "0.14.1" }
 prost-types = { version = "0.14.1" }
-tonic = { version = "0.14.2" }
+tonic = { version = "0.14.2", default-features = false, features = ["codegen"] }
 tonic-prost = { version = "0.14.2" }
 
 [build-dependencies]

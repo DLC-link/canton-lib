@@ -23,6 +23,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     tonic_prost_build::configure()
         .build_server(false)
+        // `connect` needs the tonic transport, which a wasm32 build lacks.
+        .build_transport(std::env::var_os("CARGO_FEATURE_TRANSPORT").is_some())
         .compile_protos(
             &protos.iter().map(String::as_str).collect::<Vec<_>>(),
             &[
