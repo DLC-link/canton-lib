@@ -5,8 +5,10 @@ pub mod allocation;
 pub mod allocation_factory;
 pub mod consts;
 pub mod decimal;
+#[cfg(feature = "api-client")]
 pub mod filters;
 pub mod instrument;
+#[cfg(feature = "api-client")]
 pub mod submission;
 pub mod transfer;
 pub mod transfer_factory;
