@@ -1,0 +1,32 @@
+name: Test
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    # The org ruleset will require a check with this exact name (dlc-infra#428).
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # The ledgrpc build script compiles the Canton .proto files with protoc.
+      # libprotobuf-dev holds the google/protobuf/*.proto files they import.
+      - name: Install protoc
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends protobuf-compiler libprotobuf-dev
+
+      - name: Install the pinned toolchain
+        run: rustup toolchain install
+
+      - uses: Swatinem/rust-cache@v2
+
+      # Tests that need a live ledger are marked #[ignore], so they do not run here.
+      - run: cargo test --workspace --locked
